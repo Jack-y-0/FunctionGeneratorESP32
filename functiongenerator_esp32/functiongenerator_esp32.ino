@@ -1,6 +1,6 @@
 // 26/08/2026.    dd/mm/yy
 #define PROGRAMME_NAME "functiongenerator_esp32"
-#define VERSION " V 0.0.0 "  // 
+#define VERSION " V 0.0.1 "  // change ouput GPIO25 to GPIO02
 #define MODEL_NAME "Model: functiongenerator_esp32"
 #define DEVICE_UNDER_TEST "ESP32 S2 WRROM DevKit 1"
 #define LICENSE "GNU Affero General Public License, version 3 "
@@ -16,7 +16,7 @@
   Default:
     Heart rate: 72 BPM
     Waveform:   Normal sinus rhythm
-    Output:     PWM on GPIO 25
+    Output:     PWM on GPIO 02
 
   The waveform consists of:
     1. Baseline
@@ -27,7 +27,7 @@
     6. Return to baseline
 */
 
-const int OUTPUT_PIN = 25;
+const int OUTPUT_PIN = 02;
 
 // Heart rate
 float BPM = 72.0;
