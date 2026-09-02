@@ -1,110 +1,163 @@
 // 26/08/2026.    dd/mm/yy
 #define PROGRAMME_NAME "functiongenerator_esp32"
-#define VERSION " V 0.0.1 "  // change ouput GPIO25 to GPIO02
+#define VERSION " V 0.0.2 "  // adding ouput GPIO25 for analogue signal with GPIO02 so we can see the heartbeat on the LED
 #define MODEL_NAME "Model: functiongenerator_esp32"
 #define DEVICE_UNDER_TEST "ESP32 S2 WRROM DevKit 1"
 #define LICENSE "GNU Affero General Public License, version 3 "
 #define ORIGIN "UK"
 
 /*
-  ESP32 Normal Heartbeat / PPG Simulator
-  ---------------------------------------
-  Arduino IDE
+  ============================================================
+  ESP32 PPG HEARTBEAT SIGNAL SIMULATOR
+  ============================================================
 
-  Generates a repeatable, smooth PPG-style heartbeat waveform.
+  OUTPUTS:
 
-  Default:
-    Heart rate: 72 BPM
-    Waveform:   Normal sinus rhythm
-    Output:     PWM on GPIO 02
+  GPIO 2  -> PWM -> Onboard LED
+  GPIO 25 -> DAC -> Analogue PPG waveform
 
-  The waveform consists of:
-    1. Baseline
-    2. Rapid systolic rise
-    3. Main pulse peak
-    4. Slow diastolic decay
-    5. Small dicrotic notch
-    6. Return to baseline
+  Heart rate:
+      72 BPM
+
+  Waveform:
+      Normal PPG-style pulse
+      Systolic peak
+      Diastolic decay
+      Small dicrotic feature
+
+  ============================================================
 */
 
-const int OUTPUT_PIN = 02;
+#include <Arduino.h>
 
-// Heart rate
+
+// ============================================================
+// PIN CONFIGURATION
+// ============================================================
+
+const int LED_PIN = 2;       // Onboard LED
+const int DAC_PIN = 25;      // DAC1 on classic ESP32
+
+
+// ============================================================
+// HEART RATE
+// ============================================================
+
 float BPM = 72.0;
 
-// PWM settings
-const int PWM_FREQUENCY = 5000;
-const int PWM_RESOLUTION = 12;
 
-// Maximum PWM value for 12-bit resolution
-const int PWM_MAX = 4095;
+// ============================================================
+// WAVEFORM SETTINGS
+// ============================================================
 
-// Pulse amplitude
-// 0.0 = no pulse
-// 1.0 = maximum amplitude
-float AMPLITUDE = 0.80;
+// DAC is 8-bit:
+// 0    = 0 V
+// 255  = approximately 3.3 V
 
-// Baseline output
-float BASELINE = 0.05;
+// DC baseline
+float BASELINE = 0.45;
 
-// Time resolution of waveform
-const int SAMPLE_INTERVAL_MS = 2;
+// Pulsatile component
+float AMPLITUDE = 0.12;
 
 
-// ---------------------------------------------------------
-// Gaussian function
-// ---------------------------------------------------------
+// ============================================================
+// SAMPLING
+// ============================================================
+
+// Number of points used to describe one heartbeat
+const int NUM_SAMPLES = 500;
+
+
+// ============================================================
+// GAUSSIAN FUNCTION
+// ============================================================
 
 float gaussian(float x, float centre, float width)
 {
-  float exponent =
-    -0.5 * pow((x - centre) / width, 2);
-
-  return exp(exponent);
+  return exp(
+    -0.5 * pow((x - centre) / width, 2)
+  );
 }
 
 
-// ---------------------------------------------------------
-// Generate one heartbeat waveform
-// ---------------------------------------------------------
+// ============================================================
+// HEARTBEAT WAVEFORM
+// ============================================================
 
 float heartbeatWaveform(float phase)
 {
   /*
-    phase = 0.0 → beginning of heartbeat
-    phase = 1.0 → end of heartbeat
+    phase:
+
+    0.0 = beginning of heartbeat
+    1.0 = end of heartbeat
   */
 
-  // Main systolic pulse
+
+  // --------------------------------------------------------
+  // MAIN SYSTOLIC PULSE
+  // --------------------------------------------------------
+
   float mainPulse =
-    gaussian(phase, 0.18, 0.065);
+    gaussian(
+      phase,
+      0.18,
+      0.065
+    );
 
-  // Small dicrotic feature
+
+  // --------------------------------------------------------
+  // DICROTIC WAVE
+  // --------------------------------------------------------
+
   float dicroticWave =
-    gaussian(phase, 0.43, 0.025);
+    gaussian(
+      phase,
+      0.43,
+      0.025
+    );
 
-  // Slight negative dip after the dicrotic wave
+
+  // --------------------------------------------------------
+  // SMALL DIP AFTER DICROTIC WAVE
+  // --------------------------------------------------------
+
   float dicroticDip =
-    gaussian(phase, 0.48, 0.030);
+    gaussian(
+      phase,
+      0.48,
+      0.030
+    );
 
-  // Combine components
+
+  // --------------------------------------------------------
+  // COMBINE WAVEFORM
+  // --------------------------------------------------------
+
   float pulse =
-    mainPulse
+      mainPulse
     + 0.18 * dicroticWave
     - 0.07 * dicroticDip;
 
-  // Make sure the signal doesn't become negative
+
+  // Prevent negative values
   pulse = max(0.0f, pulse);
+
 
   // Apply amplitude
   pulse *= AMPLITUDE;
 
-  // Add baseline
+
+  // Add DC baseline
   float output =
     BASELINE + pulse;
 
-  // Keep within valid range
-  output = constrain(output, 0.0f, 1.0f);
+
+  // Limit to 0–1
+  output =
+    constrain(output, 0.0f, 1.0f);
+
 
   return output;
 }
@@ -122,72 +175,126 @@ void splashserial() {
   Serial.println();
 }
 
-// ---------------------------------------------------------
-// Setup
-// ---------------------------------------------------------
+// ============================================================
+// SETUP
+// ============================================================
 
 void setup()
 {
   Serial.begin(115200);
 
-  splashserial();
+  // splashserial();
 
-  // Configure PWM
-  ledcAttach(OUTPUT_PIN, PWM_FREQUENCY, PWM_RESOLUTION);
+
+  // --------------------------------------------------------
+  // GPIO 2 PWM
+  // --------------------------------------------------------
+
+  // 5 kHz PWM
+  // 8-bit resolution
+  ledcAttach(
+    LED_PIN,
+    5000,
+    8
+  );
+
+
+  // --------------------------------------------------------
+  // INFORMATION
+  // --------------------------------------------------------
 
   Serial.println();
-  Serial.println("ESP32 Heartbeat Simulator");
-  Serial.println("-------------------------");
+  Serial.println("======================================");
+  Serial.println("ESP32 PPG HEARTBEAT SIMULATOR");
+  Serial.println("======================================");
+
   Serial.print("Heart rate: ");
   Serial.print(BPM);
   Serial.println(" BPM");
 
-  Serial.println("Normal sinus rhythm");
-  Serial.println("PPG-style waveform");
+  Serial.print("Beat duration: ");
+  Serial.print(60000.0 / BPM);
+  Serial.println(" ms");
+
+  Serial.println();
+
+  Serial.println("GPIO 2  -> LED / PWM");
+  Serial.println("GPIO 25 -> Analogue DAC");
+
+  Serial.println("======================================");
 }
 
 
-// ---------------------------------------------------------
-// Main loop
-// ---------------------------------------------------------
+// ============================================================
+// MAIN LOOP
+// ============================================================
 
 void loop()
 {
-  // Duration of one heartbeat in milliseconds
-  float beatDuration =
-    60000.0 / BPM;
+  // --------------------------------------------------------
+  // Calculate heartbeat duration
+  // --------------------------------------------------------
 
-  // Current position within heartbeat
-  static unsigned long beatStartTime = millis();
+  float beatDuration = 60000.0 / BPM;
 
-  unsigned long currentTime = millis();
+  // --------------------------------------------------------
+  // Time between waveform samples
+  // --------------------------------------------------------
 
-  // Time since beginning of current heartbeat
-  float elapsed =
-    currentTime - beatStartTime;
+  float sampleTime = beatDuration / NUM_SAMPLES;
 
-  // Start a new heartbeat
-  if (elapsed >= beatDuration)
+  // --------------------------------------------------------
+  // Generate one heartbeat
+  // --------------------------------------------------------
+
+  for (int i = 0; i < NUM_SAMPLES; i++)
   {
-    beatStartTime = currentTime;
-    elapsed = 0;
+    // Position within heartbeat
+    float phase =
+      (float)i / (NUM_SAMPLES - 1);
+
+    // Generate waveform
+    float waveform =
+      heartbeatWaveform(phase);
+
+
+    // ======================================================
+    // GPIO 2 — LED
+    // ======================================================
+
+    // Make the LED response MUCH more obvious.
+    //
+    // Instead of using the small 0.45–0.57 waveform range,
+    // map it onto a much larger brightness range.
+
+    int ledBrightness =
+      map(
+        (int)(waveform * 1000),
+        450,
+        570,
+        10,
+        255
+      );
+
+    ledBrightness =
+      constrain(
+        ledBrightness,
+        10,
+        255
+      );
+
+    ledcWrite(
+      LED_PIN,
+      ledBrightness
+    );
+
+
+    // ------------------------------------------------------
+    // Timing
+    // ------------------------------------------------------
+
+    delayMicroseconds(
+      (unsigned long)(sampleTime * 1000)
+    );
   }
-
-  // Convert time to phase 0 → 1
-  float phase =
-    elapsed / beatDuration;
-
-  // Generate waveform
-  float waveform =
-    heartbeatWaveform(phase);
-
-  // Convert waveform to PWM value
-  int pwmValue =
-    waveform * PWM_MAX;
-
-  // Output waveform
-  ledcWrite(OUTPUT_PIN, pwmValue);
-
-  // Control waveform sample rate
-  delay(SAMPLE_INTERVAL_MS);
 }
