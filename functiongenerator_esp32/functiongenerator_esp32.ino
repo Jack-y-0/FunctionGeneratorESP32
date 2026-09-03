@@ -1,6 +1,6 @@
 // 26/08/2026.    dd/mm/yy
 #define PROGRAMME_NAME "functiongenerator_esp32"
-#define VERSION " V 0.0.2 "  // adding ouput GPIO25 for analogue signal with GPIO02 so we can see the heartbeat on the LED
+#define VERSION " V 0.0.3 "  // set GPIO25 to same as LED (GPIO02) and GPIO26 to 1/2 of LED, outputs a waveform similar to heartbeat on oscilloscope
 #define MODEL_NAME "Model: functiongenerator_esp32"
 #define DEVICE_UNDER_TEST "ESP32 S2 WRROM DevKit 1"
 #define LICENSE "GNU Affero General Public License, version 3 "
