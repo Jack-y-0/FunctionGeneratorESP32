@@ -290,6 +290,9 @@ void loop()
       ledBrightness
     );
 
+    dacWrite(25, ledBrightness); // Sets GPIO25 to same as LED
+    dacWrite(26, ledBrightness/2); // Sets GPIO26 to 1/2 of LED
+
 
     // ------------------------------------------------------
     // Timing
