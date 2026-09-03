@@ -185,6 +185,8 @@ void setup()
 
   // splashserial();
 
+  dacWrite(25, 128); // Sets GPIO25 to midrange
+  dacWrite(26, 64); // Sets GPIO26 to quarter-range   
 
   // --------------------------------------------------------
   // GPIO 2 PWM
