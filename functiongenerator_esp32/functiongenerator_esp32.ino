@@ -5,7 +5,7 @@
 #define DEVICE_UNDER_TEST "ESP32 S2 WRROM DevKit 1"
 #define LICENSE "GNU Affero General Public License, version 3 "
 #define ORIGIN "UK"
-
+ 
 /*
   ============================================================
   ESP32 PPG HEARTBEAT SIGNAL SIMULATOR
@@ -302,4 +302,22 @@ void loop()
       (unsigned long)(sampleTime * 1000)
     );
   }
+
+  // Convert time to phase 0 → 1
+  float phase =
+    elapsed / beatDuration;
+
+  // Generate waveform
+  float waveform =
+    heartbeatWaveform(phase);
+
+  // Convert waveform to PWM value
+  int pwmValue =
+    waveform * PWM_MAX;
+
+  // Output waveform
+  ledcWrite(OUTPUT_PIN, pwmValue);
+
+  // Control waveform sample rate
+  delay(SAMPLE_INTERVAL_MS);
 }
