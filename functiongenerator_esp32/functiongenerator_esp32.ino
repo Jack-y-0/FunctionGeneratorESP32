@@ -285,10 +285,13 @@ void loop()
         255
       );
 
-    ledcWrite(
-      LED_PIN,
-      ledBrightness
-    );
+     if (true == analogRead(GPIO0))
+      {
+      ledcWrite(
+        LED_PIN,
+        ledBrightness
+      );
+      }
 
     if (true == analogRead(GPIO0))
     {
