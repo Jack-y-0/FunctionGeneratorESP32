@@ -1,6 +1,6 @@
 // 26/08/2026.    dd/mm/yy
 #define PROGRAMME_NAME "functiongenerator_esp32"
-#define VERSION " V 0.0.4 "  // set GPIO25 to same as LED (GPIO02) and GPIO26 to 1/2 of LED, outputs a waveform similar to heartbeat on oscilloscope
+#define VERSION " V 0.0.5 "  // make-function-generator-output-hold issue #6
 #define MODEL_NAME "Model: functiongenerator_esp32"
 #define DEVICE_UNDER_TEST "ESP32 S2 WRROM DevKit 1"
 #define LICENSE "GNU Affero General Public License, version 3 "
@@ -37,7 +37,7 @@
 
 const int LED_PIN = 2;       // Onboard LED
 const int DAC_PIN = 25;      // DAC1 on classic ESP32
-#define GPIO0 0; // Boot bottom 
+#define GPIO0 0 // Boot bottom 
 
 // ============================================================
 // HEART RATE
@@ -285,21 +285,30 @@ void loop()
         255
       );
 
-    ledcWrite(
-      LED_PIN,
-      ledBrightness
-    );
+     if (true == analogRead(GPIO0))
+      {
+      ledcWrite(
+        LED_PIN,
+        ledBrightness
+      );
+      }
 
-    dacWrite(25, ledBrightness); // Sets GPIO25 to same as LED
-    dacWrite(26, ledBrightness/2); // Sets GPIO26 to 1/2 of LED
+    if (true == analogRead(GPIO0))
+    {
+       dacWrite(25, ledBrightness); // Sets GPIO25 to same as LED
+       dacWrite(26, ledBrightness/2); // Sets GPIO26 to 1/2 of LED
 
+    }
+   
 
     // ------------------------------------------------------
     // Timing
     // ------------------------------------------------------
-
-    delayMicroseconds(
-      (unsigned long)(sampleTime * 1000)
-    );
+    if (true == analogRead(GPIO0))
+      {
+      delayMicroseconds(
+        (unsigned long)(sampleTime * 1000)
+      );
+      }
   }
 }
