@@ -285,7 +285,7 @@ void loop()
         255
       );
 
-     if (true == analogRead(GPIO0))
+     if (analogRead(GPIO0))
       {
       ledcWrite(
         LED_PIN,
@@ -293,7 +293,7 @@ void loop()
       );
       }
 
-    if (true == analogRead(GPIO0))
+    if (analogRead(GPIO0))
     {
        dacWrite(25, ledBrightness); // Sets GPIO25 to same as LED
        dacWrite(26, ledBrightness/2); // Sets GPIO26 to 1/2 of LED
