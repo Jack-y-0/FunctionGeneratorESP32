@@ -1,6 +1,6 @@
 // 26/08/2026.    dd/mm/yy
 #define PROGRAMME_NAME "functiongenerator_esp32"
-#define VERSION " V 0.0.5 "  // make-function-generator-output-hold issue #6
+#define VERSION " V 0.0.6 "  // Firmware, Version 0.0.5 BPM has changed from about 72 to about 365 #15
 #define MODEL_NAME "Model: functiongenerator_esp32"
 #define DEVICE_UNDER_TEST "ESP32 S2 WRROM DevKit 1"
 #define LICENSE "GNU Affero General Public License, version 3 "
@@ -285,7 +285,7 @@ void loop()
         255
       );
 
-     if (analogRead(GPIO0))
+      if (true == digitalRead(GPIO0))
       {
       ledcWrite(
         LED_PIN,
@@ -293,8 +293,8 @@ void loop()
       );
       }
 
-    if (analogRead(GPIO0))
-    {
+  if (true == digitalRead(GPIO0))
+   {
        dacWrite(25, ledBrightness); // Sets GPIO25 to same as LED
        dacWrite(26, ledBrightness/2); // Sets GPIO26 to 1/2 of LED
 
@@ -304,8 +304,8 @@ void loop()
     // ------------------------------------------------------
     // Timing
     // ------------------------------------------------------
-    if (true == analogRead(GPIO0))
-      {
+ if (true == digitalRead(GPIO0))
+     {
       delayMicroseconds(
         (unsigned long)(sampleTime * 1000)
       );
