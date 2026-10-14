@@ -1,10 +1,17 @@
 // 26/08/2026.    dd/mm/yy
 #define PROGRAMME_NAME "functiongenerator_esp32"
+<<<<<<< HEAD
 #define VERSION " V 0.0.9 "  // ESP32-S2 DAC pin correction; web-controlled sketch added
+=======
+// #define VERSION " V 0.0.6 "  // Firmware, Version 0.0.5 BPM has changed from about 72 to about 365 #15
+#define VERSION " V 0.0.7 "  // Runtime DAC amplitude control, issue #5
+>>>>>>> 7f098ec (updated with serial amplitude control and BOOT input configuration, AmplitudeControl.hthe function that scales the DAC amplitude.)
 #define MODEL_NAME "Model: functiongenerator_esp32"
 #define DEVICE_UNDER_TEST "ESP32-S2 WROOM DevKit 1"
 #define LICENSE "GNU Affero General Public License, version 3 "
 #define ORIGIN "UK"
+
+#include "AmplitudeControl.h"
  
 /*
   ============================================================
@@ -48,6 +55,29 @@ const int DAC2_PIN = 26;
 #error "Supported targets: classic ESP32 and ESP32-S2."
 #endif
 #define GPIO0 0 // Boot bottom 
+
+// ============================================================
+// Startup setting: full amplitude.
+// ============================================================
+
+uint8_t amplitudeLevel = 99;  
+AmplitudeCommandParser amplitudeParser;
+
+void readAmplitudeCommands()
+{
+  // Limit serial work during each waveform sample.
+  for (int n = 0; n < 16 && Serial.available() > 0; ++n) {
+    const auto result =
+        amplitudeParser.feed((char)Serial.read(), amplitudeLevel);
+
+    if (result == AmplitudeCommandParser::Accepted) {
+      Serial.print("OK a");
+      Serial.println(amplitudeLevel);
+    } else if (result == AmplitudeCommandParser::Invalid) {
+      Serial.println("ERR use a0..a99 + LF");
+    }
+  }
+}
 
 // ============================================================
 // HEART RATE
@@ -195,9 +225,16 @@ void setup()
 
   // splashserial();
 
+<<<<<<< HEAD
   pinMode(GPIO0, INPUT_PULLUP); // BOOT button pauses the waveform when held
   dacWrite(DAC1_PIN, 128); // DAC1 midpoint
   dacWrite(DAC2_PIN, 64);  // DAC2 quarter-scale   
+=======
+  pinMode(GPIO0, INPUT_PULLUP);
+
+  dacWrite(DAC_PIN, 10);  // GPIO25 baseline.
+  dacWrite(26, 5);       // GPIO26 remains half-scale.
+>>>>>>> 7f098ec (updated with serial amplitude control and BOOT input configuration, AmplitudeControl.hthe function that scales the DAC amplitude.)
 
   // --------------------------------------------------------
   // GPIO 2 PWM
@@ -220,6 +257,9 @@ void setup()
   Serial.println("======================================");
   Serial.println("ESP32 PPG HEARTBEAT SIMULATOR");
   Serial.println("======================================");
+
+  Serial.println("Amplitude: a0..a99 + Newline");
+  Serial.println("a99 = full amplitude; a0 = flat baseline");
 
   Serial.print("Heart rate: ");
   Serial.print(BPM);
@@ -267,6 +307,7 @@ void loop()
 
   for (int i = 0; i < NUM_SAMPLES; i++)
   {
+    readAmplitudeCommands();
     // Position within heartbeat
     float phase =
       (float)i / (NUM_SAMPLES - 1);
@@ -309,13 +350,21 @@ void loop()
       );
       }
 
+<<<<<<< HEAD
   if (true == digitalRead(GPIO0))
    {
        dacWrite(DAC1_PIN, ledBrightness); // DAC1
        dacWrite(DAC2_PIN, ledBrightness / 2); // DAC2 at half amplitude
+=======
+    if (true == digitalRead(GPIO0))
+    {
+      const uint8_t dacValue =
+          scaleDacAmplitude(ledBrightness, amplitudeLevel);
+>>>>>>> 7f098ec (updated with serial amplitude control and BOOT input configuration, AmplitudeControl.hthe function that scales the DAC amplitude.)
 
+      dacWrite(DAC_PIN, dacValue);
+      dacWrite(26, dacValue / 2);
     }
-   
 
     // ------------------------------------------------------
     // Timing

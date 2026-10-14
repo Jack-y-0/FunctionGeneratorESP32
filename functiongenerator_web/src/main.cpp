@@ -26,6 +26,10 @@ static constexpr uint8_t DAC_PINS[2] = {25, 26};
 #error "This project supports classic ESP32 and ESP32-S2 targets only."
 #endif
 static constexpr uint32_t SAMPLE_RATE_HZ = 4000;
+static constexpr uint8_t HEARTBEAT_LED_PIN = 2;
+static constexpr uint8_t HEARTBEAT_PWM_CHANNEL = 0;
+static constexpr uint32_t HEARTBEAT_BPM = 72;
+static constexpr uint32_t HEARTBEAT_UPDATE_US = 10000;
 static constexpr uint32_t SAMPLE_PERIOD_US = 1000000UL / SAMPLE_RATE_HZ;
 static constexpr float DAC_FULL_SCALE_V = 3.3f;
 static constexpr float MIN_FREQUENCY_HZ = 0.5f;
@@ -69,6 +73,7 @@ static uint8_t eventLogNext = 0;
 static uint8_t eventLogCount = 0;
 static portMUX_TYPE configMux = portMUX_INITIALIZER_UNLOCKED;
 static esp_timer_handle_t sampleTimer = nullptr;
+static esp_timer_handle_t heartbeatTimer = nullptr;
 static volatile uint32_t sampleTicks = 0;
 static volatile uint8_t lastDacCodes[2] = {0, 0};
 static bool sampleTimerStarted = false;
@@ -153,6 +158,41 @@ static float ppgWaveform(float p) {
     + 0.18f * gaussian(p, 0.43f, 0.025f)
     - 0.07f * gaussian(p, 0.48f, 0.030f));
   return 0.05f + 0.95f * fminf(1.0f, pulse);
+}
+
+static void onHeartbeatTimer(void *) {
+  // Use elapsed time so delayed updates do not slow the heartbeat or accumulate drift.
+  const uint64_t minuteUs = 60000000ULL;
+  const uint64_t nowUs = static_cast<uint64_t>(esp_timer_get_time());
+  const float beatPhase = static_cast<float>(((nowUs % minuteUs) * HEARTBEAT_BPM) % minuteUs) /
+                          static_cast<float>(minuteUs);
+  const float pulse = (ppgWaveform(beatPhase) - 0.05f) / 0.95f;
+  ledcWrite(HEARTBEAT_PWM_CHANNEL, static_cast<uint8_t>(lroundf(10.0f + 245.0f * pulse)));
+}
+
+static void beginHeartbeat() {
+  if (ledcSetup(HEARTBEAT_PWM_CHANNEL, 5000, 8) == 0) {
+    Serial.println("Could not configure GPIO2 heartbeat PWM.");
+    return;
+  }
+  ledcAttachPin(HEARTBEAT_LED_PIN, HEARTBEAT_PWM_CHANNEL);
+  ledcWrite(HEARTBEAT_PWM_CHANNEL, 10);
+  esp_timer_create_args_t args = {};
+  args.callback = &onHeartbeatTimer;
+  args.name = "led_heartbeat";
+  args.dispatch_method = ESP_TIMER_TASK;
+  esp_err_t result = esp_timer_create(&args, &heartbeatTimer);
+  if (result == ESP_OK) result = esp_timer_start_periodic(heartbeatTimer, HEARTBEAT_UPDATE_US);
+  if (result != ESP_OK) {
+    Serial.printf("Could not start GPIO2 heartbeat (error %d).\n", result);
+    if (heartbeatTimer) {
+      esp_timer_delete(heartbeatTimer);
+      heartbeatTimer = nullptr;
+    }
+    ledcWrite(HEARTBEAT_PWM_CHANNEL, 0);
+    return;
+  }
+  Serial.println("GPIO2 LED heartbeat started at 72 BPM.");
 }
 
 static float normalizedWaveform(const char *waveform, float p) {
@@ -672,6 +712,8 @@ void setup() {
   // Hold both outputs at zero until the user enables them from the webpage.
   dacWrite(DAC_PINS[0], 0);
   dacWrite(DAC_PINS[1], 0);
+
+  beginHeartbeat();
 
   WiFi.mode(WIFI_STA);
   String setupApName = "ESP32_" + WiFi.macAddress();
