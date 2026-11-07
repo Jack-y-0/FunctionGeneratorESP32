@@ -283,15 +283,15 @@ static void handleChannelUpdate() {
   portENTER_CRITICAL(&configMux);
   applied = channelConfig[index];
   portEXIT_CRITICAL(&configMux);
-  Serial.printf("Web update CH%d: enabled=%d waveform=%s freq=%.1fHz amp=%.0f%% offset=%.0f%%\\n",
+  Serial.printf("Web update CH%d: enabled=%d waveform=%s freq=%.1fHz amp=%.0f%% offset=%.0f%%\n",
                 index + 1, applied.enabled, applied.waveform, applied.frequencyHz,
                 applied.amplitudePercent, applied.offsetPercent);
-  String response = "{\\"ok\\":true,\\"channel\\":" + String(index) +
-                    ",\\"waveform\\":\\"" + String(applied.waveform) +
-                    "\\",\\"frequency\\":" + String(applied.frequencyHz, 1) +
-                    ",\\"amplitude\\":" + String(applied.amplitudePercent, 0) +
-                    ",\\"offset\\":" + String(applied.offsetPercent, 0) +
-                    ",\\"enabled\\":" + String(applied.enabled ? "true" : "false") + "}";
+  String response = "{\"ok\":true,\"channel\":" + String(index) +
+                    ",\"waveform\":\"" + String(applied.waveform) +
+                    "\",\"frequency\":" + String(applied.frequencyHz, 1) +
+                    ",\"amplitude\":" + String(applied.amplitudePercent, 0) +
+                    ",\"offset\":" + String(applied.offsetPercent, 0) +
+                    ",\"enabled\":" + String(applied.enabled ? "true" : "false") + "}";
   server.send(200, "application/json", response);
 }
 
@@ -517,3 +517,4 @@ void loop() {
   serviceFaultTimers();
   delay(1);
 }
+
