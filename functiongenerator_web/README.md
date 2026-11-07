@@ -42,3 +42,20 @@ Amplitude is the requested peak-to-peak span, as a percentage of the nominal 0â€
 ## Uploading the combined firmware
 
 Upload only this PlatformIO project to use the web controls and all waveform modes. The two older `.ino` folders are standalone sketches and must not be compiled as part of this same firmware. Their useful behavior has been incorporated here: the synthetic PPG shape is a selectable waveform, and the fixed DAC test levels are available through the **Load DC midpoint test** preset. That preset sets GPIO17 to code 128 (about half scale) and GPIO18 to code 64 (about quarter scale). The `ADCtomid_ESP32` sketch writes DAC levels; it does not read ADC inputs.
+
+## Waveform command IDs
+
+| Command | Selection |
+|---|---|
+| `a0` | Sine |
+| `a1` | Square |
+| `a2` | Triangle |
+| `a3` | Sawtooth |
+| `a4` | Synthetic PPG pulse |
+| `a5` | DC level |
+
+The webpage presents these as buttons on each output card; a button click applies that waveform to that card's output. From USB Serial Monitor, send `a0`â€“`a5` to change the selected serial channel. Use `ch1` for GPIO17 or `ch2` for GPIO18 first. Set the Serial Monitor line ending to Newline or Both NL & CR.
+
+## Pin selection
+
+The ESP32-S2's two built-in DAC outputs are physically fixed to GPIO17 and GPIO18. The webpage assigns a waveform independently to either DAC output, but cannot reroute the built-in DAC to arbitrary pins. The GPIO labels are shown on the channel cards. Other GPIO pins can produce PWM, but using them as analog-like outputs requires a low-pass filter and is a separate output mode.
