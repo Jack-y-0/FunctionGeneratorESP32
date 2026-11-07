@@ -10,8 +10,8 @@
 
 // Pin selection follows the PlatformIO target: classic ESP32 uses GPIO25/26;
 // ESP32-S2 uses GPIO17/18 for its built-in DAC channels.
-#if defined(CONFIG_IDF_TARGET_ESP32S2)
 static constexpr const char *FIRMWARE_BUILD_ID = "channel-debug-2026-11-07";
+#if defined(CONFIG_IDF_TARGET_ESP32S2)
 static constexpr const char *BOARD_TARGET_NAME = "ESP32-S2";
 static constexpr uint8_t DAC_PINS[2] = {17, 18};
 #elif defined(CONFIG_IDF_TARGET_ESP32)
