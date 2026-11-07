@@ -15,3 +15,7 @@ User can press and hold the BOOT button to pause the waveform update.
 ## Web-controlled generator
 
 The `functiongenerator_web/` folder adds a Wi-Fi webpage for two independently controlled DAC outputs. It offers sine, square, triangle, sawtooth, and the existing synthetic PPG pulse shape. See [`functiongenerator_web/README.md`](functiongenerator_web/README.md) for build and wiring instructions.
+
+## Which sketch should I upload?
+
+Each sketch folder is a separate firmware with its own `setup()` and `loop()`. To use the combined webpage, upload only the PlatformIO project in `functiongenerator_web/`. It includes the four standard waveforms, the PPG pulse, and a DC test preset that reproduces the fixed output levels from `ADCtomid_ESP32/`. The original sketches remain separate examples; they are not compiled together.
