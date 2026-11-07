@@ -204,7 +204,7 @@ static void handleState() {
   local[1] = channelConfig[1];
   portEXIT_CRITICAL(&configMux);
 
-  String json = "{\"sampleRateHz\":" + String(SAMPLE_RATE_HZ) + ",\"pins\":[" + String(DAC_PINS[0]) + "," + String(DAC_PINS[1]) + "],\"channels\":[";
+  String json = "{\"firmware\":\"" + String(FIRMWARE_BUILD_ID) + "\",\"sampleRateHz\":" + String(SAMPLE_RATE_HZ) + ",\"pins\":[" + String(DAC_PINS[0]) + "," + String(DAC_PINS[1]) + "],\"channels\":[";
   for (uint8_t i = 0; i < 2; ++i) {
     if (i) json += ',';
     json += "{\"waveform\":\"" + String(local[i].waveform) +
