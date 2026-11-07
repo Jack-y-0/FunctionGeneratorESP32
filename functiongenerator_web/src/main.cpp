@@ -200,7 +200,7 @@ static void processSerialCommand() {
 
   if (command == "ch1" || command == "ch2") {
     serialTargetChannel = (command == "ch1") ? 0 : 1;
-    Serial.printf("Serial target: Channel %u (GPIO%u)\\n", serialTargetChannel + 1, DAC_PINS[serialTargetChannel]);
+    Serial.printf("Serial target: Channel %u (GPIO%u)\n", serialTargetChannel + 1, DAC_PINS[serialTargetChannel]);
     return;
   }
 
@@ -217,7 +217,7 @@ static void processSerialCommand() {
   portENTER_CRITICAL(&configMux);
   channelConfig[serialTargetChannel] = updated;
   portEXIT_CRITICAL(&configMux);
-  Serial.printf("Channel %u waveform: %s\\n", serialTargetChannel + 1, wave);
+  Serial.printf("Channel %u waveform: %s\n", serialTargetChannel + 1, wave);
 }
 
 static void serviceSerial() {
