@@ -3,6 +3,7 @@
 #include <WebServer.h>
 #include <WiFiManager.h>
 #include <Preferences.h>
+#include <esp_system.h>
 #include <esp_timer.h>
 #include <math.h>
 #include "wavegen_page.h"
@@ -45,6 +46,8 @@ static WebServer server(80);
 static Preferences settingsStore;
 static bool settingsDirty = false;
 static uint32_t lastSettingsChangeMs = 0;
+static String webPassword;
+static String setupApPassword;
 
 static const char *waveformForCommand(const String &command) {
   if (command == "a0") return "sine";
@@ -63,6 +66,13 @@ static bool validWaveform(const String &waveform) {
 
 static void loadChannelSettings() {
   settingsStore.begin("wavegen", false);
+  webPassword = settingsStore.getString("webpass", "");
+  if (webPassword.length() < 12) {
+    webPassword = makeRandomPassword();
+    settingsStore.putString("webpass", webPassword);
+  }
+  Serial.print("Web login: username=admin password=");
+  Serial.println(webPassword);
   for (uint8_t i = 0; i < 2; ++i) {
     const String prefix = "ch" + String(i) + "_";
     const String savedWaveform = settingsStore.getString((prefix + "wave").c_str(), channelConfig[i].waveform);
@@ -92,6 +102,20 @@ static void saveChannelSettingsIfDue() {
 static void markSettingsDirty() {
   settingsDirty = true;
   lastSettingsChangeMs = millis();
+}
+
+static String makeRandomPassword() {
+  char password[17];
+  snprintf(password, sizeof(password), "%08lx%08lx",
+           static_cast<unsigned long>(esp_random()),
+           static_cast<unsigned long>(esp_random()));
+  return String(password);
+}
+
+static bool requireWebAuth() {
+  if (server.authenticate("admin", webPassword.c_str())) return true;
+  server.requestAuthentication(BASIC_AUTH, "ESP32_MUXSIGSIM");
+  return false;
 }
 
 static float gaussian(float x, float centre, float width) {
@@ -278,9 +302,9 @@ static void serviceSerial() {
 }
 
 static void beginWebServer() {
-  server.on("/", HTTP_GET, []() { server.send_P(200, "text/html; charset=utf-8", INDEX_HTML); });
-  server.on("/api/state", HTTP_GET, handleState);
-  server.on("/api/channel", HTTP_POST, handleChannelUpdate);
+  server.on("/", HTTP_GET, []() { if (!requireWebAuth()) return; server.send_P(200, "text/html; charset=utf-8", INDEX_HTML); });
+  server.on("/api/state", HTTP_GET, []() { if (!requireWebAuth()) return; handleState(); });
+  server.on("/api/channel", HTTP_POST, []() { if (!requireWebAuth()) return; handleChannelUpdate(); });
   server.onNotFound([]() { server.send(404, "text/plain", "Not found"); });
   server.begin();
   Serial.println("Web server started.");
@@ -306,9 +330,12 @@ void setup() {
   dacWrite(DAC_PINS[1], 0);
 
   WiFi.mode(WIFI_STA);
+  setupApPassword = makeRandomPassword();
+  Serial.print("Setup AP: ESP32_MUXSIGSIM password=");
+  Serial.println(setupApPassword);
   WiFiManager wifiManager;
   wifiManager.setConfigPortalTimeout(180);
-  if (!wifiManager.autoConnect("ESP32_MUXSIGSIM")) {
+  if (!wifiManager.autoConnect("ESP32_MUXSIGSIM", setupApPassword.c_str())) {
     Serial.println("Wi-Fi setup timed out. Restarting; reconnect to the setup network to try again.");
     delay(500);
     ESP.restart();
