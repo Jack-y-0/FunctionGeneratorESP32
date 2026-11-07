@@ -10,7 +10,7 @@
 
 // Pin selection follows the PlatformIO target: classic ESP32 uses GPIO25/26;
 // ESP32-S2 uses GPIO17/18 for its built-in DAC channels.
-static constexpr const char *FIRMWARE_BUILD_ID = "channel-debug-2026-11-07";
+static constexpr const char *FIRMWARE_BUILD_ID = "signal-fix-2026-11-07";
 #if defined(CONFIG_IDF_TARGET_ESP32S2)
 static constexpr const char *BOARD_TARGET_NAME = "ESP32-S2";
 static constexpr uint8_t DAC_PINS[2] = {17, 18};
@@ -20,7 +20,6 @@ static constexpr uint8_t DAC_PINS[2] = {25, 26};
 #else
 #error "This project supports classic ESP32 and ESP32-S2 targets only."
 #endif
-static constexpr uint8_t BOOT_PIN = 0;
 static constexpr uint32_t SAMPLE_RATE_HZ = 4000;
 static constexpr uint32_t SAMPLE_PERIOD_US = 1000000UL / SAMPLE_RATE_HZ;
 static constexpr float DAC_FULL_SCALE_V = 3.3f;
@@ -162,7 +161,6 @@ static uint8_t sampleToDacCode(const ChannelConfig &config, float wave) {
 
 // Runs from the ESP timer task every 250 us and applies an active timed fault.
 static void onSampleTimer(void *) {
-  if (digitalRead(BOOT_PIN) == LOW) return;
   ChannelConfig local[2];
   FaultConfig faults[2];
   portENTER_CRITICAL(&configMux);
@@ -464,7 +462,6 @@ static void beginWebServer() {
 
 void setup() {
   Serial.begin(115200);
-  pinMode(BOOT_PIN, INPUT_PULLUP);
   delay(250);
   Serial.println();
   Serial.print(BOARD_TARGET_NAME);
