@@ -32,10 +32,10 @@ struct ChannelConfig {
   bool enabled;
 };
 
-// Defaults preserve the current sketch's 72 BPM pulse and half-amplitude second output.
+// Start both outputs disabled; enable a channel explicitly from the webpage.
 static ChannelConfig channelConfig[2] = {
-  {"ppg", 1.2f, 90.0f, 50.0f, true},
-  {"ppg", 1.2f, 45.0f, 50.0f, true}
+  {"ppg", 1.2f, 90.0f, 50.0f, false},
+  {"ppg", 1.2f, 45.0f, 50.0f, false}
 };
 static float phase[2] = {0.0f, 0.0f};
 static portMUX_TYPE configMux = portMUX_INITIALIZER_UNLOCKED;
@@ -261,13 +261,14 @@ void setup() {
   Serial.println(DAC_PINS[1]);
   Serial.println("Serial: send ch1/ch2 then a0-a5 to select waveform.");
 
-  dacWrite(DAC_PINS[0], 128);
-  dacWrite(DAC_PINS[1], 128);
+  // Hold both outputs at zero until the user enables them from the webpage.
+  dacWrite(DAC_PINS[0], 0);
+  dacWrite(DAC_PINS[1], 0);
 
   WiFi.mode(WIFI_STA);
   WiFiManager wifiManager;
   wifiManager.setConfigPortalTimeout(180);
-  if (!wifiManager.autoConnect("ESP32-S2-WaveGen-Setup")) {
+  if (!wifiManager.autoConnect("ESP32_MUXSIGSIM")) {
     Serial.println("Wi-Fi setup timed out. Restarting; reconnect to the setup network to try again.");
     delay(500);
     ESP.restart();
