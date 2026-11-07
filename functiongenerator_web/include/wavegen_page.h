@@ -8,7 +8,7 @@ static const char INDEX_HTML[] PROGMEM = R"WAVEGENHTML(
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="theme-color" content="#f4f7fb">
-  <title>ESP32-S2 Wave Generator</title>
+  <title>ESP32 Wave Generator</title>
   <style>
     :root{font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;color:#162238;background:#f4f7fb;font-synthesis:none}
     *{box-sizing:border-box}body{margin:0;min-width:320px}.wrap{max-width:1050px;margin:auto;padding:28px 18px 48px}
@@ -31,25 +31,25 @@ static const char INDEX_HTML[] PROGMEM = R"WAVEGENHTML(
 <body>
   <main class="wrap">
     <header>
-      <div><h1>ESP32-S2 Wave Generator</h1><p class="sub">Two independently controlled DAC outputs, including a synthetic PPG pulse.</p></div>
+      <div><h1>ESP32 Wave Generator</h1><p class="sub">Two independently controlled DAC outputs, including a synthetic PPG pulse.</p></div>
       <div class="badge"><span class="dot" id="connectionDot"></span><span id="connectionText">Connecting…</span></div>
     </header>
-    <div class="notice"><strong>ESP32-S2 outputs:</strong> GPIO17 (DAC1) and GPIO18 (DAC2). Output is unipolar and nominally 0–3.3 V. The built-in DAC is 8-bit and is for low-frequency signal testing, not a calibrated instrument output.</div>
-    <div class="presetbar"><button id="dcPreset" type="button">Load DC midpoint test</button><span>GPIO17 = 128/255; GPIO18 = 64/255</span></div>
+    <div class="notice"><strong>DAC outputs:</strong> Pin numbers depend on the selected PlatformIO board target and are shown on each channel card. Output is unipolar and nominally 0–3.3 V. The built-in DAC is 8-bit and is for low-frequency signal testing, not a calibrated instrument output.</div>
+    <div class="presetbar"><button id="dcPreset" type="button">Load DC midpoint test</button><span>DAC1 = 128/255; DAC2 = 64/255</span></div>
     <section class="grid" id="channels"></section>
-    <p class="foot"><strong>Wiring:</strong> connect GPIO17 and/or GPIO18 to a high-impedance ADC input on the receiving ESP32, and connect both boards’ GND pins together. Do not connect the output to equipment that expects negative voltage, voltage above 3.3 V, or a low-impedance load. Hold the ESP32-S2 BOOT button to pause waveform updates. USB Serial commands: `ch1` or `ch2` selects a channel, then `a0`–`a5` selects its waveform.</p>
+    <p class="foot"><strong>Wiring:</strong> connect the DAC pins shown on the channel cards to high-impedance ADC inputs on the receiving board, and connect both boards’ GND pins together. Do not connect the output to equipment that expects negative voltage, voltage above 3.3 V, or a low-impedance load. Hold the BOOT button to pause waveform updates. USB Serial commands: `ch1` or `ch2` selects a channel, then `a0`–`a5` selects its waveform.</p>
   </main>
 <script>
 const channelDefaults=[
-  {name:'Channel 1',pin:17,waveform:'ppg',frequency:1.2,amplitude:90,offset:50,enabled:true},
-  {name:'Channel 2',pin:18,waveform:'ppg',frequency:1.2,amplitude:45,offset:50,enabled:true}
+  {name:'Channel 1',pin:0,waveform:'ppg',frequency:1.2,amplitude:90,offset:50,enabled:true},
+  {name:'Channel 2',pin:0,waveform:'ppg',frequency:1.2,amplitude:45,offset:50,enabled:true}
 ];
 let channels=channelDefaults.map(c=>({...c}));
 const shapes=['sine','square','triangle','sawtooth','ppg','dc'];
 const shapeLabel={sine:'Sine',square:'Square',triangle:'Triangle',sawtooth:'Sawtooth',ppg:'PPG pulse',dc:'DC level'};
 const commandWave={a0:'sine',a1:'square',a2:'triangle',a3:'sawtooth',a4:'ppg',a5:'dc'};
 const card=(c,i)=>`<article class="card" data-channel="${i}">
-  <div class="cardhead"><h2>${c.name}</h2><span class="pin">GPIO${c.pin} · DAC</span></div>
+  <div class="cardhead"><h2>${c.name}</h2><span class="pin" id="pinLabel${i}">Loading pin…</span></div>
   <canvas id="plot${i}" width="700" height="220" aria-label="${c.name} waveform preview"></canvas>
   <div class="controls">
     <div class="field wide"><label>Choose waveform · command IDs</label><div class="wave-buttons">${shapes.map((s,j)=>`<button type="button" class="wavebtn" data-command="a${j}">a${j} · ${shapeLabel[s]}</button>`).join('')}</div></div>
@@ -69,7 +69,7 @@ async function send(i,command=null){const c=channels[i],params=new URLSearchPara
 function changed(i,immediate=false,command=null){render(i);clearTimeout(timers[i]);if(immediate)send(i,command);else timers[i]=setTimeout(()=>send(i,command),140)}
 channels.forEach((c,i)=>{document.querySelectorAll(`[data-channel="${i}"] .wavebtn`).forEach(button=>button.addEventListener('click',()=>{c.waveform=commandWave[button.dataset.command];changed(i,true,button.dataset.command)}));document.getElementById(`freq${i}`).addEventListener('input',e=>{c.frequency=Number(e.target.value);changed(i)});document.getElementById(`amp${i}`).addEventListener('input',e=>{c.amplitude=Number(e.target.value);changed(i)});document.getElementById(`offset${i}`).addEventListener('input',e=>{c.offset=Number(e.target.value);changed(i)});document.getElementById(`enable${i}`).addEventListener('change',e=>{c.enabled=e.target.checked;changed(i,true)});render(i)});
 function setOnline(online){document.getElementById('connectionDot').classList.toggle('online',online);document.getElementById('connectionText').textContent=online?'ESP32 connected':'Connection lost'}
-async function loadState(){try{const r=await fetch('/api/state');if(!r.ok)throw new Error();const state=await r.json();state.channels.forEach((s,i)=>{channels[i]={...channels[i],...s};document.getElementById(`freq${i}`).value=channels[i].frequency;document.getElementById(`amp${i}`).value=channels[i].amplitude;document.getElementById(`offset${i}`).value=channels[i].offset;document.getElementById(`enable${i}`).checked=channels[i].enabled;render(i)});setOnline(true)}catch(e){setOnline(false)}}
+async function loadState(){try{const r=await fetch('/api/state');if(!r.ok)throw new Error();const state=await r.json();state.channels.forEach((s,i)=>{channels[i]={...channels[i],...s,pin:state.pins[i]};document.getElementById(`pinLabel${i}`).textContent=`GPIO${state.pins[i]} · DAC`;document.getElementById(`freq${i}`).value=channels[i].frequency;document.getElementById(`amp${i}`).value=channels[i].amplitude;document.getElementById(`offset${i}`).value=channels[i].offset;document.getElementById(`enable${i}`).checked=channels[i].enabled;render(i)});setOnline(true)}catch(e){setOnline(false)}}
 document.getElementById('dcPreset').addEventListener('click',()=>{channels[0]={...channels[0],waveform:'dc',amplitude:0,offset:50,enabled:true};channels[1]={...channels[1],waveform:'dc',amplitude:0,offset:25,enabled:true};channels.forEach((c,i)=>{document.getElementById(`amp${i}`).value=c.amplitude;document.getElementById(`offset${i}`).value=c.offset;document.getElementById(`enable${i}`).checked=c.enabled;changed(i,true,'a5')})});
 loadState();setInterval(loadState,5000);
 </script>
