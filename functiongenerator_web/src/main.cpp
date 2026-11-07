@@ -11,6 +11,7 @@
 // Pin selection follows the PlatformIO target: classic ESP32 uses GPIO25/26;
 // ESP32-S2 uses GPIO17/18 for its built-in DAC channels.
 #if defined(CONFIG_IDF_TARGET_ESP32S2)
+static constexpr const char *FIRMWARE_BUILD_ID = "channel-debug-2026-11-07";
 static constexpr const char *BOARD_TARGET_NAME = "ESP32-S2";
 static constexpr uint8_t DAC_PINS[2] = {17, 18};
 #elif defined(CONFIG_IDF_TARGET_ESP32)
@@ -277,7 +278,21 @@ static void handleChannelUpdate() {
   channelConfig[index] = updated;
   portEXIT_CRITICAL(&configMux);
   markSettingsDirty();
-  server.send(200, "application/json", "{\"ok\":true}");
+
+  ChannelConfig applied;
+  portENTER_CRITICAL(&configMux);
+  applied = channelConfig[index];
+  portEXIT_CRITICAL(&configMux);
+  Serial.printf("Web update CH%d: enabled=%d waveform=%s freq=%.1fHz amp=%.0f%% offset=%.0f%%\\n",
+                index + 1, applied.enabled, applied.waveform, applied.frequencyHz,
+                applied.amplitudePercent, applied.offsetPercent);
+  String response = "{\\"ok\\":true,\\"channel\\":" + String(index) +
+                    ",\\"waveform\\":\\"" + String(applied.waveform) +
+                    "\\",\\"frequency\\":" + String(applied.frequencyHz, 1) +
+                    ",\\"amplitude\\":" + String(applied.amplitudePercent, 0) +
+                    ",\\"offset\\":" + String(applied.offsetPercent, 0) +
+                    ",\\"enabled\\":" + String(applied.enabled ? "true" : "false") + "}";
+  server.send(200, "application/json", response);
 }
 
 static const char *faultName(FaultMode mode) {
