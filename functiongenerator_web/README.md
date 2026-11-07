@@ -1,47 +1,37 @@
-# Web-Controlled Function Generator (ESP32-S2)
+# Web-Controlled Function Generator
 
-This is an additional sketch for the existing `FunctionGeneratorESP32` repository. It leaves the original v0.0.6 sketch in `functiongenerator_esp32/` unchanged and adds browser control for two independent outputs.
+This is the combined PlatformIO firmware for the FunctionGeneratorESP32 project. It supports both the classic ESP32 DevKit and the ESP32-S2 WROOM DevKit 1.
 
 ## Waveforms and controls
 
 - Sine, square, triangle, sawtooth, synthetic PPG pulse, and DC level
-- Independent waveform, frequency, amplitude, offset, and enable controls for each DAC channel
+- Separate waveform buttons and frequency, amplitude, offset, and enable controls for both DAC outputs
 - Frequency range: 0.5–10 Hz; in PPG mode this corresponds to 30–600 beats/minute
-- Live waveform preview in the webpage
-- DC midpoint test preset: GPIO17 at 128/255 and GPIO18 at 64/255
-- BOOT button pauses output updates, preserving the existing sketch's pause behavior
+- USB Serial commands use the same waveform IDs as the webpage
+- DC midpoint preset reproduces DAC1 code 128 and DAC2 code 64
+- BOOT button pauses waveform updates
 
-Defaults are PPG at 1.2 Hz (72 beats/minute) on both outputs; Channel 2 starts at half the peak-to-peak amplitude of Channel 1, matching the existing sketch's intent.
+## Board targets and DAC pins
 
-## ESP32-S2 wiring
+| PlatformIO environment | Board | DAC1 | DAC2 |
+|---|---|---|---|
+| `esp32dev` | Classic ESP32 | GPIO25 | GPIO26 |
+| `esp32-s2-saola-1` | ESP32-S2 | GPIO17 | GPIO18 |
 
-| Generator output | Pin |
-|---|---|
-| DAC channel 1 | GPIO17 |
-| DAC channel 2 | GPIO18 |
-| Common reference | GND |
+The upload log you shared identifies a classic ESP32, so select `esp32dev`. The webpage obtains the pin mapping from firmware and displays the correct GPIO on each channel card.
 
-Connect the outputs only to high-impedance analog inputs that accept 0–3.3 V. Connect the generator ground to the receiving board ground. The ESP32-S2 DAC is 8-bit, unipolar, and not a calibrated function-generator output. Check the signal with a scope before using it with other hardware.
+Connect the DAC pins to high-impedance analog inputs that accept 0–3.3 V, and connect the boards' grounds together. The DAC is 8-bit, unipolar, and not a calibrated function-generator output. Check the signal with a scope before connecting other equipment.
 
 ## Build and upload with PlatformIO
 
 1. Open the `functiongenerator_web` folder in VS Code with PlatformIO installed.
-2. Connect the ESP32-S2 WROOM DevKit 1 over USB.
-3. Build and upload the `esp32-s2-saola-1` environment. PlatformIO installs WiFiManager from `platformio.ini`.
-4. Open the Serial Monitor at 115200 baud.
-5. On first boot, connect your phone or computer to `ESP32-S2-WaveGen-Setup`. If its setup page does not open automatically, go to `192.168.4.1`.
-6. Select your Wi-Fi network and enter its password.
-7. After the ESP32 connects, use the local IP printed in Serial Monitor. Open `http://<ESP32-IP>` on a device connected to the same Wi-Fi network.
-
-The network credentials and waveform settings are not stored in the sketch. WiFiManager saves the Wi-Fi network; waveform settings return to the defaults after a restart.
-
-## Amplitude and offset
-
-Amplitude is the requested peak-to-peak span, as a percentage of the nominal 0–3.3 V DAC range. Offset sets its center voltage as a percentage of the same range. Firmware clips values to 0–3.3 V. For an unclipped 100% amplitude waveform, set offset to 50%.
-
-## Uploading the combined firmware
-
-Upload only this PlatformIO project to use the web controls and all waveform modes. The two older `.ino` folders are standalone sketches and must not be compiled as part of this same firmware. Their useful behavior has been incorporated here: the synthetic PPG shape is a selectable waveform, and the fixed DAC test levels are available through the **Load DC midpoint test** preset. That preset sets GPIO17 to code 128 (about half scale) and GPIO18 to code 64 (about quarter scale). The `ADCtomid_ESP32` sketch writes DAC levels; it does not read ADC inputs.
+2. Connect the board over USB.
+3. Select `esp32dev` for a classic ESP32 or `esp32-s2-saola-1` for an ESP32-S2.
+4. Build and upload that environment. PlatformIO installs WiFiManager from `platformio.ini`.
+5. Open Serial Monitor at 115200 baud.
+6. On first boot, connect your phone or computer to `ESP32-WaveGen-Setup`. If the setup page does not open automatically, browse to `192.168.4.1`.
+7. Select your normal Wi-Fi network and enter its password.
+8. Open the local IP printed in Serial Monitor from a device on the same Wi-Fi network.
 
 ## Waveform command IDs
 
@@ -54,8 +44,12 @@ Upload only this PlatformIO project to use the web controls and all waveform mod
 | `a4` | Synthetic PPG pulse |
 | `a5` | DC level |
 
-The webpage presents these as buttons on each output card; a button click applies that waveform to that card's output. From USB Serial Monitor, send `a0`–`a5` to change the selected serial channel. Use `ch1` for GPIO17 or `ch2` for GPIO18 first. Set the Serial Monitor line ending to Newline or Both NL & CR.
+Each channel card has one button per command. In USB Serial Monitor, send `a0`–`a5` to change the selected serial channel. Use `ch1` for DAC1 or `ch2` for DAC2 first. Set the line ending to Newline or Both NL & CR.
 
 ## Pin selection
 
-The ESP32-S2's two built-in DAC outputs are physically fixed to GPIO17 and GPIO18. The webpage assigns a waveform independently to either DAC output, but cannot reroute the built-in DAC to arbitrary pins. The GPIO labels are shown on the channel cards. Other GPIO pins can produce PWM, but using them as analog-like outputs requires a low-pass filter and is a separate output mode.
+The two built-in DACs have fixed pins for each board family: GPIO25/26 on classic ESP32, GPIO17/18 on ESP32-S2. The webpage lets you select a waveform independently for each DAC output and displays the selected pins. It cannot reroute the built-in DACs to arbitrary GPIOs. Other GPIOs can output PWM, but using PWM as an analog-like output requires a low-pass filter and is a separate mode.
+
+## Project structure
+
+The original PPG and DAC midpoint sketches remain as standalone examples. Upload only this PlatformIO project to run the combined webpage, PPG, waveform, and DC test features.
