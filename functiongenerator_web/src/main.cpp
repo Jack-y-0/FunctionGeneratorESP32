@@ -50,6 +50,9 @@ static uint8_t eventLogNext = 0;
 static uint8_t eventLogCount = 0;
 static portMUX_TYPE configMux = portMUX_INITIALIZER_UNLOCKED;
 static esp_timer_handle_t sampleTimer = nullptr;
+static volatile uint32_t sampleTicks = 0;
+static volatile uint8_t lastDacCodes[2] = {0, 0};
+static bool sampleTimerStarted = false;
 static WebServer server(80);
 static Preferences settingsStore;
 static bool settingsDirty = false;
@@ -166,20 +169,28 @@ static void onSampleTimer(void *) {
   portENTER_CRITICAL(&configMux);
   local[0] = channelConfig[0]; local[1] = channelConfig[1];
   faults[0] = faultConfig[0]; faults[1] = faultConfig[1];
+  ++sampleTicks;
   portEXIT_CRITICAL(&configMux);
   const uint64_t nowUs = esp_timer_get_time();
   for (uint8_t i = 0; i < 2; ++i) {
-    if (!local[i].enabled) { dacWrite(DAC_PINS[i], 0); continue; }
+    if (!local[i].enabled) {
+      dacWrite(DAC_PINS[i], 0);
+      lastDacCodes[i] = 0;
+      continue;
+    }
     const bool active = faults[i].active && nowUs < faults[i].expiresAtUs;
     if (active && faults[i].mode == FAULT_DROPOUT) {
       dacWrite(DAC_PINS[i], 0);
+      lastDacCodes[i] = 0;
     } else {
       ChannelConfig effective = local[i];
       if (active && faults[i].mode == FAULT_REDUCED_AMPLITUDE) effective.amplitudePercent *= 0.5f;
       if (active && faults[i].mode == FAULT_BASELINE_SHIFT) effective.offsetPercent = fminf(100.0f, effective.offsetPercent + 10.0f);
       float value = normalizedWaveform(effective.waveform, phase[i]);
       if (active && faults[i].mode == FAULT_MISSING_PULSE && strcmp(effective.waveform, "ppg") == 0 && faults[i].skipCurrentBeat) value = 0.05f;
-      dacWrite(DAC_PINS[i], sampleToDacCode(effective, value));
+      const uint8_t code = sampleToDacCode(effective, value);
+      dacWrite(DAC_PINS[i], code);
+      lastDacCodes[i] = code;
     }
     phase[i] += local[i].frequencyHz / static_cast<float>(SAMPLE_RATE_HZ);
     if (phase[i] >= 1.0f) {
@@ -200,9 +211,16 @@ static void handleState() {
   portENTER_CRITICAL(&configMux);
   local[0] = channelConfig[0];
   local[1] = channelConfig[1];
+  const uint32_t localSampleTicks = sampleTicks;
   portEXIT_CRITICAL(&configMux);
 
-  String json = "{\"firmware\":\"" + String(FIRMWARE_BUILD_ID) + "\",\"sampleRateHz\":" + String(SAMPLE_RATE_HZ) + ",\"pins\":[" + String(DAC_PINS[0]) + "," + String(DAC_PINS[1]) + "],\"channels\":[";
+  String json = "{\"firmware\":\"" + String(FIRMWARE_BUILD_ID) +
+                "\",\"timerRunning\":" + String(sampleTimerStarted ? "true" : "false") +
+                ",\"timerTicks\":" + String(localSampleTicks) +
+                ",\"sampleRateHz\":" + String(SAMPLE_RATE_HZ) +
+                ",\"pins\":[" + String(DAC_PINS[0]) + "," + String(DAC_PINS[1]) +
+                "],\"dacCodes\":[" + String(lastDacCodes[0]) + "," + String(lastDacCodes[1]) +
+                "],\"channels\":[";
   for (uint8_t i = 0; i < 2; ++i) {
     if (i) json += ',';
     json += "{\"waveform\":\"" + String(local[i].waveform) +
@@ -504,7 +522,9 @@ void setup() {
     return;
   }
   const esp_err_t startResult = esp_timer_start_periodic(sampleTimer, SAMPLE_PERIOD_US);
-  if (startResult != ESP_OK) Serial.printf("Could not start sample timer (error %d).\n", startResult);
+  sampleTimerStarted = startResult == ESP_OK;
+  if (!sampleTimerStarted) Serial.printf("Could not start sample timer (error %d).\n", startResult);
+  else Serial.printf("DAC sample timer started at %lu Hz.\n", static_cast<unsigned long>(SAMPLE_RATE_HZ));
 }
 
 void loop() {
