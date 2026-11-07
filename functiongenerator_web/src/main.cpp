@@ -139,10 +139,17 @@ static void handleChannelUpdate() {
   updated = channelConfig[index];
   portEXIT_CRITICAL(&configMux);
 
-  if (server.hasArg("waveform")) {
+  if (server.hasArg("command")) {
+    const char *wave = waveformForCommand(server.arg("command"));
+    if (wave == nullptr) {
+      server.send(400, "application/json", R"json({"error":"Use command a0 through a5"})json");
+      return;
+    }
+    strlcpy(updated.waveform, wave, sizeof(updated.waveform));
+  } else if (server.hasArg("waveform")) {
     const String wave = server.arg("waveform");
     if (!validWaveform(wave)) {
-      server.send(400, "application/json", "{\"error\":\"Unsupported waveform\"}");
+      server.send(400, "application/json", R"json({"error":"Unsupported waveform"})json");
       return;
     }
     strlcpy(updated.waveform, wave.c_str(), sizeof(updated.waveform));
@@ -184,7 +191,7 @@ static char serialBuffer[24];
 static size_t serialBufferLength = 0;
 
 static void processSerialCommand() {
-  serialBuffer[serialBufferLength] = '\\0';
+  serialBuffer[serialBufferLength] = '\0';
   String command(serialBuffer);
   command.trim();
   command.toLowerCase();
@@ -216,7 +223,7 @@ static void processSerialCommand() {
 static void serviceSerial() {
   while (Serial.available() > 0) {
     const char ch = static_cast<char>(Serial.read());
-    if (ch == '\\r' || ch == '\\n') {
+    if (ch == '\r' || ch == '\n') {
       processSerialCommand();
     } else if (serialBufferLength < sizeof(serialBuffer) - 1) {
       serialBuffer[serialBufferLength++] = ch;
