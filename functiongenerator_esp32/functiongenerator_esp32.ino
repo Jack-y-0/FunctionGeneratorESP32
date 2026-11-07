@@ -232,8 +232,12 @@ void setup()
   Serial.println();
 
   Serial.println("GPIO 2  -> LED / PWM");
-  Serial.printf("GPIO %d -> DAC1 PPG output\\n", DAC1_PIN);
-  Serial.printf("GPIO %d -> DAC2 half-amplitude PPG output\\n", DAC2_PIN);
+  Serial.print("GPIO ");
+  Serial.print(DAC1_PIN);
+  Serial.println(" -> DAC1 PPG output");
+  Serial.print("GPIO ");
+  Serial.print(DAC2_PIN);
+  Serial.println(" -> DAC2 half-amplitude PPG output");
 
   Serial.println("======================================");
 }
