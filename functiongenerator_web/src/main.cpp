@@ -421,6 +421,7 @@ static void processSerialCommand() {
   portENTER_CRITICAL(&configMux);
   channelConfig[serialTargetChannel] = updated;
   portEXIT_CRITICAL(&configMux);
+  markSettingsDirty();
   Serial.printf("Channel %u waveform: %s\n", serialTargetChannel + 1, wave);
 }
 
