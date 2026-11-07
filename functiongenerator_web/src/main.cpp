@@ -36,7 +36,7 @@ static WebServer server(80);
 
 static bool validWaveform(const String &waveform) {
   return waveform == "sine" || waveform == "square" ||
-         waveform == "triangle" || waveform == "sawtooth" || waveform == "ppg";
+         waveform == "triangle" || waveform == "sawtooth" || waveform == "ppg" || waveform == "dc";
 }
 
 static float gaussian(float x, float centre, float width) {
@@ -58,6 +58,7 @@ static float normalizedWaveform(const char *waveform, float p) {
   if (strcmp(waveform, "triangle") == 0) return 1.0f - fabsf(2.0f * p - 1.0f);
   if (strcmp(waveform, "sawtooth") == 0) return p;
   if (strcmp(waveform, "ppg") == 0) return ppgWaveform(p);
+  if (strcmp(waveform, "dc") == 0) return 0.5f;
   return 0.5f + 0.5f * sinf(2.0f * PI * p);
 }
 
