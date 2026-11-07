@@ -1,23 +1,16 @@
 # FunctionGeneratorESP32
 
-Uses the DAC outputs on an ESP32 to make a waveform similar to a PPG sensor.  
-Classic ESP32 DAC pins: GPIO25/26. ESP32-S2 DAC pins: GPIO17/18.  
-The onboard LED is on GPIO2 and is PWM modulated for a similar effect for the user.  
+This repository contains two separate firmware examples:
 
-<img width="824" height="646" alt="image" src="https://github.com/user-attachments/assets/add5d9ad-cf85-42c7-88f9-86aaa4b4aa68" />  
-
-User can press and hold the BOOT button to pause the waveform update.  
-<img width="824" height="646" alt="image" src="https://github.com/user-attachments/assets/f2217349-7e44-4ea8-b7af-c8f74206d137" />
-
-
-
+- `functiongenerator_esp32/` — the original button-controlled waveform sketch.
+- `functiongenerator_web/` — the two-channel web-controlled generator. Use this PlatformIO project for the webpage and independent channel controls.
 
 ## Web-controlled generator
 
-The `functiongenerator_web/` folder adds a Wi-Fi webpage for two independently controlled DAC outputs. It offers sine, square, triangle, sawtooth, and the existing synthetic PPG pulse shape. See [`functiongenerator_web/README.md`](functiongenerator_web/README.md) for build and wiring instructions.
+The web firmware supports sine, square, triangle, sawtooth, synthetic PPG, and DC outputs. Channel 1 and Channel 2 have independent waveform, frequency, amplitude, offset, and enable settings. Both outputs start disabled after boot; enable each output on its webpage card.
 
-## Which sketch should I upload?
+The default PlatformIO target is `esp32dev` for the classic ESP32 DevKit. Its DAC pins are GPIO25 and GPIO26. The S2 target uses GPIO17 and GPIO18. The webpage displays the selected target's pin mapping. See [`functiongenerator_web/README.md`](functiongenerator_web/README.md) for setup, credentials, wiring, and diagnostics.
 
-Each sketch folder is a separate firmware with its own `setup()` and `loop()`. To use the combined webpage, upload only the PlatformIO project in `functiongenerator_web/`. It includes the four standard waveforms, the PPG pulse, and a DC test preset that reproduces the fixed output levels from `ADCtomid_ESP32/`. The original sketches remain separate examples; they are not compiled together.
+## Uploading
 
-The web page provides one waveform-command button group per DAC output. Command IDs are `a0`–`a5`; USB Serial can use the same IDs after selecting `ch1` or `ch2`. The DAC pins are fixed by board family: GPIO25/26 on classic ESP32 and GPIO17/18 on ESP32-S2. The web firmware displays the selected pair.
+Upload only `functiongenerator_web/` to run the web interface. The standalone `.ino` projects each have their own `setup()` and `loop()` and are not compiled together with the web firmware. The BOOT-button pause behavior belongs to the original standalone sketch; web outputs are controlled independently from the webpage.
