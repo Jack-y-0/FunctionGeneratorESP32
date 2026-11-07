@@ -1,8 +1,9 @@
+
+<img width="803" height="890" alt="Screenshot 2026-11-08 at 00 28 12" src="https://github.com/user-attachments/assets/d389e689-68d3-4dfb-b60f-30eee0b7d29a" />
+
 # FunctionGeneratorESP32
 
-This repository contains two separate firmware examples:
 
-- `functiongenerator_esp32/` — the original button-controlled waveform sketch.
 - `functiongenerator_web/` — the two-channel web-controlled generator. Use this PlatformIO project for the webpage and independent channel controls.
 
 ## Web-controlled generator
