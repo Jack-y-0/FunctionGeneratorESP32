@@ -253,8 +253,12 @@ void setup() {
   pinMode(BOOT_PIN, INPUT_PULLUP);
   delay(250);
   Serial.println();
-  Serial.printf("%s dual-channel waveform generator\\n", BOARD_TARGET_NAME);
-  Serial.printf("DAC1 GPIO%u / DAC2 GPIO%u\\n", DAC_PINS[0], DAC_PINS[1]);
+  Serial.print(BOARD_TARGET_NAME);
+  Serial.println(" dual-channel waveform generator");
+  Serial.print("DAC1 GPIO");
+  Serial.print(DAC_PINS[0]);
+  Serial.print(" / DAC2 GPIO");
+  Serial.println(DAC_PINS[1]);
   Serial.println("Serial: send ch1/ch2 then a0-a5 to select waveform.");
 
   dacWrite(DAC_PINS[0], 128);
