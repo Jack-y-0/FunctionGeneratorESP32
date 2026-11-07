@@ -1,7 +1,7 @@
 # FunctionGeneratorESP32
 
 Uses the DAC outputs on an ESP32 to make a waveform similar to a PPG sensor.  
-Analog outputs on the ESP32-S2: GPIO17 (DAC1) and GPIO18 (DAC2).  
+Classic ESP32 DAC pins: GPIO25/26. ESP32-S2 DAC pins: GPIO17/18.  
 The onboard LED is on GPIO2 and is PWM modulated for a similar effect for the user.  
 
 <img width="824" height="646" alt="image" src="https://github.com/user-attachments/assets/add5d9ad-cf85-42c7-88f9-86aaa4b4aa68" />  
@@ -20,4 +20,4 @@ The `functiongenerator_web/` folder adds a Wi-Fi webpage for two independently c
 
 Each sketch folder is a separate firmware with its own `setup()` and `loop()`. To use the combined webpage, upload only the PlatformIO project in `functiongenerator_web/`. It includes the four standard waveforms, the PPG pulse, and a DC test preset that reproduces the fixed output levels from `ADCtomid_ESP32/`. The original sketches remain separate examples; they are not compiled together.
 
-The web page provides one waveform-command button group per DAC output. Command IDs are `a0`–`a5`; USB Serial can use the same IDs after selecting `ch1` or `ch2`. The ESP32-S2 DAC pins are fixed at GPIO17 and GPIO18.
+The web page provides one waveform-command button group per DAC output. Command IDs are `a0`–`a5`; USB Serial can use the same IDs after selecting `ch1` or `ch2`. The DAC pins are fixed by board family: GPIO25/26 on classic ESP32 and GPIO17/18 on ESP32-S2. The web firmware displays the selected pair.
