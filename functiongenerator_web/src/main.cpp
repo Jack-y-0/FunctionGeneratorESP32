@@ -2,6 +2,7 @@
 #include <WiFi.h>
 #include <WebServer.h>
 #include <WiFiManager.h>
+#include <Preferences.h>
 #include <esp_timer.h>
 #include <math.h>
 #include "wavegen_page.h"
@@ -41,6 +42,9 @@ static float phase[2] = {0.0f, 0.0f};
 static portMUX_TYPE configMux = portMUX_INITIALIZER_UNLOCKED;
 static esp_timer_handle_t sampleTimer = nullptr;
 static WebServer server(80);
+static Preferences settingsStore;
+static bool settingsDirty = false;
+static uint32_t lastSettingsChangeMs = 0;
 
 static const char *waveformForCommand(const String &command) {
   if (command == "a0") return "sine";
@@ -55,6 +59,39 @@ static const char *waveformForCommand(const String &command) {
 static bool validWaveform(const String &waveform) {
   return waveform == "sine" || waveform == "square" ||
          waveform == "triangle" || waveform == "sawtooth" || waveform == "ppg" || waveform == "dc";
+}
+
+static void loadChannelSettings() {
+  settingsStore.begin("wavegen", false);
+  for (uint8_t i = 0; i < 2; ++i) {
+    const String prefix = "ch" + String(i) + "_";
+    const String savedWaveform = settingsStore.getString((prefix + "wave").c_str(), channelConfig[i].waveform);
+    if (validWaveform(savedWaveform)) {
+      strlcpy(channelConfig[i].waveform, savedWaveform.c_str(), sizeof(channelConfig[i].waveform));
+    }
+    channelConfig[i].frequencyHz = constrain(settingsStore.getFloat((prefix + "freq").c_str(), channelConfig[i].frequencyHz), MIN_FREQUENCY_HZ, MAX_FREQUENCY_HZ);
+    channelConfig[i].amplitudePercent = constrain(settingsStore.getFloat((prefix + "amp").c_str(), channelConfig[i].amplitudePercent), 0.0f, 100.0f);
+    channelConfig[i].offsetPercent = constrain(settingsStore.getFloat((prefix + "offset").c_str(), channelConfig[i].offsetPercent), 0.0f, 100.0f);
+    // Never restore the enabled flag: outputs remain off after every reboot.
+    channelConfig[i].enabled = false;
+  }
+}
+
+static void saveChannelSettingsIfDue() {
+  if (!settingsDirty || millis() - lastSettingsChangeMs < 1500) return;
+  for (uint8_t i = 0; i < 2; ++i) {
+    const String prefix = "ch" + String(i) + "_";
+    settingsStore.putString((prefix + "wave").c_str(), channelConfig[i].waveform);
+    settingsStore.putFloat((prefix + "freq").c_str(), channelConfig[i].frequencyHz);
+    settingsStore.putFloat((prefix + "amp").c_str(), channelConfig[i].amplitudePercent);
+    settingsStore.putFloat((prefix + "offset").c_str(), channelConfig[i].offsetPercent);
+  }
+  settingsDirty = false;
+}
+
+static void markSettingsDirty() {
+  settingsDirty = true;
+  lastSettingsChangeMs = millis();
 }
 
 static float gaussian(float x, float centre, float width) {
@@ -191,6 +228,7 @@ static void handleChannelUpdate() {
   portENTER_CRITICAL(&configMux);
   channelConfig[index] = updated;
   portEXIT_CRITICAL(&configMux);
+  markSettingsDirty();
   server.send(200, "application/json", "{\"ok\":true}");
 }
 
@@ -260,6 +298,8 @@ void setup() {
   Serial.print(" / DAC2 GPIO");
   Serial.println(DAC_PINS[1]);
   Serial.println("Serial: send ch1/ch2 then a0-a5 to select waveform.");
+  loadChannelSettings();
+  Serial.println("Saved waveform settings loaded; outputs remain disabled.");
 
   // Hold both outputs at zero until the user enables them from the webpage.
   dacWrite(DAC_PINS[0], 0);
@@ -294,5 +334,6 @@ void setup() {
 void loop() {
   serviceSerial();
   server.handleClient();
+  saveChannelSettingsIfDue();
   delay(1);
 }
