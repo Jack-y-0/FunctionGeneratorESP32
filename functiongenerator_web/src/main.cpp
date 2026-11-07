@@ -6,9 +6,17 @@
 #include <math.h>
 #include "wavegen_page.h"
 
-// Target: ESP32-S2 WROOM DevKit 1, as identified in the existing project.
-// ESP32-S2 DAC1 and DAC2 are routed to GPIO17 and GPIO18 respectively.
+// Pin selection follows the PlatformIO target: classic ESP32 uses GPIO25/26;
+// ESP32-S2 uses GPIO17/18 for its built-in DAC channels.
+#if defined(CONFIG_IDF_TARGET_ESP32S2)
+static constexpr const char *BOARD_TARGET_NAME = "ESP32-S2";
 static constexpr uint8_t DAC_PINS[2] = {17, 18};
+#elif defined(CONFIG_IDF_TARGET_ESP32)
+static constexpr const char *BOARD_TARGET_NAME = "ESP32";
+static constexpr uint8_t DAC_PINS[2] = {25, 26};
+#else
+#error "This project supports classic ESP32 and ESP32-S2 targets only."
+#endif
 static constexpr uint8_t BOOT_PIN = 0;
 static constexpr uint32_t SAMPLE_RATE_HZ = 4000;
 static constexpr uint32_t SAMPLE_PERIOD_US = 1000000UL / SAMPLE_RATE_HZ;
@@ -110,7 +118,7 @@ static void handleState() {
   local[1] = channelConfig[1];
   portEXIT_CRITICAL(&configMux);
 
-  String json = "{\"sampleRateHz\":" + String(SAMPLE_RATE_HZ) + ",\"channels\":[";
+  String json = "{\"sampleRateHz\":" + String(SAMPLE_RATE_HZ) + ",\"pins\":[" + String(DAC_PINS[0]) + "," + String(DAC_PINS[1]) + "],\"channels\":[";
   for (uint8_t i = 0; i < 2; ++i) {
     if (i) json += ',';
     json += "{\"waveform\":\"" + String(local[i].waveform) +
@@ -245,8 +253,8 @@ void setup() {
   pinMode(BOOT_PIN, INPUT_PULLUP);
   delay(250);
   Serial.println();
-  Serial.println("ESP32-S2 dual-channel waveform generator");
-  Serial.println("DAC1 GPIO17 / DAC2 GPIO18");
+  Serial.printf("%s dual-channel waveform generator\\n", BOARD_TARGET_NAME);
+  Serial.printf("DAC1 GPIO%u / DAC2 GPIO%u\\n", DAC_PINS[0], DAC_PINS[1]);
   Serial.println("Serial: send ch1/ch2 then a0-a5 to select waveform.");
 
   dacWrite(DAC_PINS[0], 128);
