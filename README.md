@@ -19,3 +19,5 @@ The `functiongenerator_web/` folder adds a Wi-Fi webpage for two independently c
 ## Which sketch should I upload?
 
 Each sketch folder is a separate firmware with its own `setup()` and `loop()`. To use the combined webpage, upload only the PlatformIO project in `functiongenerator_web/`. It includes the four standard waveforms, the PPG pulse, and a DC test preset that reproduces the fixed output levels from `ADCtomid_ESP32/`. The original sketches remain separate examples; they are not compiled together.
+
+The web page provides one waveform-command button group per DAC output. Command IDs are `a0`–`a5`; USB Serial can use the same IDs after selecting `ch1` or `ch2`. The ESP32-S2 DAC pins are fixed at GPIO17 and GPIO18.
