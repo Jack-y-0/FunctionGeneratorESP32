@@ -34,6 +34,16 @@ static portMUX_TYPE configMux = portMUX_INITIALIZER_UNLOCKED;
 static esp_timer_handle_t sampleTimer = nullptr;
 static WebServer server(80);
 
+static const char *waveformForCommand(const String &command) {
+  if (command == "a0") return "sine";
+  if (command == "a1") return "square";
+  if (command == "a2") return "triangle";
+  if (command == "a3") return "sawtooth";
+  if (command == "a4") return "ppg";
+  if (command == "a5") return "dc";
+  return nullptr;
+}
+
 static bool validWaveform(const String &waveform) {
   return waveform == "sine" || waveform == "square" ||
          waveform == "triangle" || waveform == "sawtooth" || waveform == "ppg" || waveform == "dc";
@@ -169,6 +179,51 @@ static void handleChannelUpdate() {
   server.send(200, "application/json", "{\"ok\":true}");
 }
 
+static uint8_t serialTargetChannel = 0;
+static char serialBuffer[24];
+static size_t serialBufferLength = 0;
+
+static void processSerialCommand() {
+  serialBuffer[serialBufferLength] = '\\0';
+  String command(serialBuffer);
+  command.trim();
+  command.toLowerCase();
+  serialBufferLength = 0;
+  if (command.length() == 0) return;
+
+  if (command == "ch1" || command == "ch2") {
+    serialTargetChannel = (command == "ch1") ? 0 : 1;
+    Serial.printf("Serial target: Channel %u (GPIO%u)\\n", serialTargetChannel + 1, DAC_PINS[serialTargetChannel]);
+    return;
+  }
+
+  const char *wave = waveformForCommand(command);
+  if (wave == nullptr) {
+    Serial.println("Commands: ch1/ch2 select output; a0=sine, a1=square, a2=triangle, a3=sawtooth, a4=PPG, a5=DC");
+    return;
+  }
+  ChannelConfig updated;
+  portENTER_CRITICAL(&configMux);
+  updated = channelConfig[serialTargetChannel];
+  portEXIT_CRITICAL(&configMux);
+  strlcpy(updated.waveform, wave, sizeof(updated.waveform));
+  portENTER_CRITICAL(&configMux);
+  channelConfig[serialTargetChannel] = updated;
+  portEXIT_CRITICAL(&configMux);
+  Serial.printf("Channel %u waveform: %s\\n", serialTargetChannel + 1, wave);
+}
+
+static void serviceSerial() {
+  while (Serial.available() > 0) {
+    const char ch = static_cast<char>(Serial.read());
+    if (ch == '\\r' || ch == '\\n') {
+      processSerialCommand();
+    } else if (serialBufferLength < sizeof(serialBuffer) - 1) {
+      serialBuffer[serialBufferLength++] = ch;
+    }
+  }
+}
+
 static void beginWebServer() {
   server.on("/", HTTP_GET, []() { server.send_P(200, "text/html; charset=utf-8", INDEX_HTML); });
   server.on("/api/state", HTTP_GET, handleState);
@@ -185,6 +240,7 @@ void setup() {
   Serial.println();
   Serial.println("ESP32-S2 dual-channel waveform generator");
   Serial.println("DAC1 GPIO17 / DAC2 GPIO18");
+  Serial.println("Serial: send ch1/ch2 then a0-a5 to select waveform.");
 
   dacWrite(DAC_PINS[0], 128);
   dacWrite(DAC_PINS[1], 128);
@@ -216,6 +272,7 @@ void setup() {
 }
 
 void loop() {
+  serviceSerial();
   server.handleClient();
   delay(1);
 }
