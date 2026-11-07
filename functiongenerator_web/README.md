@@ -51,3 +51,19 @@ The **Load DC midpoint test** button sets DAC1 to code 128 and DAC2 to code 64; 
 | `a5` | DC level |
 
 The webpage has a separate waveform button on each channel. USB Serial accepts `ch1` or `ch2` to select a channel, followed by `a0`–`a5` to select its waveform.
+
+## Version history
+
+Git commits identify the versions below; no numbered release scheme has been adopted yet. Dates use Asia/Beirut time. Earlier entries are selected milestones, not the complete Git log.
+
+| Date | Revision | Changes |
+|---|---|---|
+| 2026-11-08 | This documentation revision | Add version history and a standards proposal for review; no firmware changes. |
+| 2026-11-08 | `75c28a1` | Fix controls editing stale channel settings; animate the simulated waveform over a fixed 2-second window so frequency changes affect cycle spacing. |
+| 2026-11-07 | `6d05c0d` | Make API authentication explicit and show authentication failures. |
+| 2026-11-07 | `ab46196` | Serialize channel updates and display DAC diagnostics. |
+| 2026-11-07 | `f766ec5` | Add DAC sample timer and sample diagnostics. |
+| 2026-11-07 | `1fadb59` | Remove the BOOT pin gate from the DAC timer. |
+| 2026-11-07 | `5199934` | Ignore stale state polling responses during channel edits. |
+
+The animated graph is a simulated preview, not a measurement of the DAC output. See the [standards proposal](docs/standards_proposal.md) for candidate standards awaiting approval.
