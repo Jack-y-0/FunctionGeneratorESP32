@@ -26,6 +26,10 @@ static constexpr float DAC_FULL_SCALE_V = 3.3f;
 static constexpr float MIN_FREQUENCY_HZ = 0.5f;
 static constexpr float MAX_FREQUENCY_HZ = 10.0f;
 
+enum FaultMode : uint8_t { FAULT_NONE, FAULT_MISSING_PULSE, FAULT_REDUCED_AMPLITUDE, FAULT_BASELINE_SHIFT, FAULT_DROPOUT };
+struct FaultConfig { FaultMode mode; uint64_t expiresAtUs; bool active; };
+struct EventRecord { uint32_t uptimeMs; uint8_t channel; char scenario[20]; char action[8]; };
+
 struct ChannelConfig {
   char waveform[12];
   float frequencyHz;
@@ -40,6 +44,10 @@ static ChannelConfig channelConfig[2] = {
   {"ppg", 1.2f, 45.0f, 50.0f, false}
 };
 static float phase[2] = {0.0f, 0.0f};
+static FaultConfig faultConfig[2] = {};
+static EventRecord eventLog[24] = {};
+static uint8_t eventLogNext = 0;
+static uint8_t eventLogCount = 0;
 static portMUX_TYPE configMux = portMUX_INITIALIZER_UNLOCKED;
 static esp_timer_handle_t sampleTimer = nullptr;
 static WebServer server(80);
@@ -149,29 +157,33 @@ static uint8_t sampleToDacCode(const ChannelConfig &config, float wave) {
   return static_cast<uint8_t>(lroundf((volts / DAC_FULL_SCALE_V) * 255.0f));
 }
 
-// Runs from the ESP timer task every 250 us; the two phase accumulators are independent.
+// Runs from the ESP timer task every 250 us and applies an active timed fault.
 static void onSampleTimer(void *) {
-  // The existing sketch pauses its output while BOOT (GPIO0) is held low.
   if (digitalRead(BOOT_PIN) == LOW) return;
-
   ChannelConfig local[2];
+  FaultConfig faults[2];
   portENTER_CRITICAL(&configMux);
-  local[0] = channelConfig[0];
-  local[1] = channelConfig[1];
+  local[0] = channelConfig[0]; local[1] = channelConfig[1];
+  faults[0] = faultConfig[0]; faults[1] = faultConfig[1];
   portEXIT_CRITICAL(&configMux);
-
+  const uint64_t nowUs = esp_timer_get_time();
   for (uint8_t i = 0; i < 2; ++i) {
-    if (!local[i].enabled) {
+    if (!local[i].enabled) { dacWrite(DAC_PINS[i], 0); continue; }
+    const bool active = faults[i].active && nowUs < faults[i].expiresAtUs;
+    if (active && faults[i].mode == FAULT_DROPOUT) {
       dacWrite(DAC_PINS[i], 0);
-      continue;
+    } else {
+      ChannelConfig effective = local[i];
+      if (active && faults[i].mode == FAULT_REDUCED_AMPLITUDE) effective.amplitudePercent *= 0.5f;
+      if (active && faults[i].mode == FAULT_BASELINE_SHIFT) effective.offsetPercent = fminf(100.0f, effective.offsetPercent + 10.0f);
+      float value = normalizedWaveform(effective.waveform, phase[i]);
+      if (active && faults[i].mode == FAULT_MISSING_PULSE && strcmp(effective.waveform, "ppg") == 0) value = 0.05f;
+      dacWrite(DAC_PINS[i], sampleToDacCode(effective, value));
     }
-    const float value = normalizedWaveform(local[i].waveform, phase[i]);
-    dacWrite(DAC_PINS[i], sampleToDacCode(local[i], value));
     phase[i] += local[i].frequencyHz / static_cast<float>(SAMPLE_RATE_HZ);
     if (phase[i] >= 1.0f) phase[i] -= floorf(phase[i]);
   }
 }
-
 static void handleState() {
   ChannelConfig local[2];
   portENTER_CRITICAL(&configMux);
@@ -256,6 +268,107 @@ static void handleChannelUpdate() {
   server.send(200, "application/json", "{\"ok\":true}");
 }
 
+static const char *faultName(FaultMode mode) {
+  switch (mode) {
+    case FAULT_MISSING_PULSE: return "missing_pulse";
+    case FAULT_REDUCED_AMPLITUDE: return "reduced_amplitude";
+    case FAULT_BASELINE_SHIFT: return "baseline_shift";
+    case FAULT_DROPOUT: return "dropout";
+    default: return "none";
+  }
+}
+
+static void recordFaultEvent(uint8_t channel, FaultMode mode, const char *action) {
+  EventRecord &event = eventLog[eventLogNext];
+  event.uptimeMs = millis();
+  event.channel = channel + 1;
+  strlcpy(event.scenario, faultName(mode), sizeof(event.scenario));
+  strlcpy(event.action, action, sizeof(event.action));
+  eventLogNext = (eventLogNext + 1) % 24;
+  if (eventLogCount < 24) ++eventLogCount;
+}
+
+static void handleFaultUpdate() {
+  if (!server.hasArg("channel") || !server.hasArg("mode")) {
+    server.send(400, "application/json", "{\"error\":\"Missing channel or mode\"}");
+    return;
+  }
+  const int index = server.arg("channel").toInt();
+  if (index < 0 || index > 1) {
+    server.send(400, "application/json", "{\"error\":\"Channel must be 0 or 1\"}");
+    return;
+  }
+  const String requested = server.arg("mode");
+  FaultMode mode = FAULT_NONE;
+  if (requested == "missing_pulse") mode = FAULT_MISSING_PULSE;
+  else if (requested == "reduced_amplitude") mode = FAULT_REDUCED_AMPLITUDE;
+  else if (requested == "baseline_shift") mode = FAULT_BASELINE_SHIFT;
+  else if (requested == "dropout") mode = FAULT_DROPOUT;
+  else if (requested != "none") {
+    server.send(400, "application/json", "{\"error\":\"Unsupported fault mode\"}");
+    return;
+  }
+  uint32_t durationSeconds = 0;
+  if (mode != FAULT_NONE) {
+    durationSeconds = server.arg("duration").toInt();
+    if (durationSeconds < 1 || durationSeconds > 600) {
+      server.send(400, "application/json", "{\"error\":\"Duration must be 1 to 600 seconds\"}");
+      return;
+    }
+    if (mode == FAULT_MISSING_PULSE) {
+      portENTER_CRITICAL(&configMux);
+      const bool isPpg = strcmp(channelConfig[index].waveform, "ppg") == 0;
+      portEXIT_CRITICAL(&configMux);
+      if (!isPpg) {
+        server.send(400, "application/json", "{\"error\":\"Missing pulse requires PPG waveform\"}");
+        return;
+      }
+    }
+  }
+  portENTER_CRITICAL(&configMux);
+  faultConfig[index].mode = mode;
+  faultConfig[index].active = mode != FAULT_NONE;
+  faultConfig[index].expiresAtUs = esp_timer_get_time() + static_cast<uint64_t>(durationSeconds) * 1000000ULL;
+  portEXIT_CRITICAL(&configMux);
+  recordFaultEvent(index, mode, mode == FAULT_NONE ? "stopped" : "started");
+  server.send(200, "application/json", "{\"ok\":true}");
+}
+
+static void handleFaultEvents() {
+  String json = "{\"events\":[";
+  const uint8_t first = (eventLogNext + 24 - eventLogCount) % 24;
+  for (uint8_t i = 0; i < eventLogCount; ++i) {
+    if (i) json += ',';
+    const EventRecord &event = eventLog[(first + i) % 24];
+    json += "{\"uptimeMs\":";
+    json += String(event.uptimeMs);
+    json += ",\"channel\":";
+    json += String(event.channel);
+    json += ",\"scenario\":\"";
+    json += event.scenario;
+    json += "\",\"action\":\"";
+    json += event.action;
+    json += "\"}";
+  }
+  json += "]}";
+  server.send(200, "application/json", json);
+}
+
+static void serviceFaultTimers() {
+  const uint64_t nowUs = esp_timer_get_time();
+  for (uint8_t i = 0; i < 2; ++i) {
+    FaultMode expiredMode = FAULT_NONE;
+    portENTER_CRITICAL(&configMux);
+    if (faultConfig[i].active && nowUs >= faultConfig[i].expiresAtUs) {
+      expiredMode = faultConfig[i].mode;
+      faultConfig[i].active = false;
+      faultConfig[i].mode = FAULT_NONE;
+    }
+    portEXIT_CRITICAL(&configMux);
+    if (expiredMode != FAULT_NONE) recordFaultEvent(i, expiredMode, "ended");
+  }
+}
+
 static uint8_t serialTargetChannel = 0;
 static char serialBuffer[24];
 static size_t serialBufferLength = 0;
@@ -305,6 +418,8 @@ static void beginWebServer() {
   server.on("/", HTTP_GET, []() { if (!requireWebAuth()) return; server.send_P(200, "text/html; charset=utf-8", INDEX_HTML); });
   server.on("/api/state", HTTP_GET, []() { if (!requireWebAuth()) return; handleState(); });
   server.on("/api/channel", HTTP_POST, []() { if (!requireWebAuth()) return; handleChannelUpdate(); });
+  server.on("/api/fault", HTTP_POST, []() { if (!requireWebAuth()) return; handleFaultUpdate(); });
+  server.on("/api/events", HTTP_GET, []() { if (!requireWebAuth()) return; handleFaultEvents(); });
   server.onNotFound([]() { server.send(404, "text/plain", "Not found"); });
   server.begin();
   Serial.println("Web server started.");
@@ -362,5 +477,6 @@ void loop() {
   serviceSerial();
   server.handleClient();
   saveChannelSettingsIfDue();
+  serviceFaultTimers();
   delay(1);
 }
