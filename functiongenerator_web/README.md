@@ -9,6 +9,7 @@ This is the combined PlatformIO firmware for the FunctionGeneratorESP32 project.
 - Frequency range: 0.5–10 Hz; in PPG mode this corresponds to 30–600 beats/minute
 - USB Serial commands use the same waveform IDs as the webpage
 - DC midpoint preset reproduces DAC1 code 128 and DAC2 code 64
+- Both outputs start disabled and remain at 0 V until enabled from the webpage
 - BOOT button pauses waveform updates
 
 ## Board targets and DAC pins
@@ -18,7 +19,7 @@ This is the combined PlatformIO firmware for the FunctionGeneratorESP32 project.
 | `esp32dev` | Classic ESP32 | GPIO25 | GPIO26 |
 | `esp32-s2-saola-1` | ESP32-S2 | GPIO17 | GPIO18 |
 
-The upload log you shared identifies a classic ESP32, so select `esp32dev`. The webpage obtains the pin mapping from firmware and displays the correct GPIO on each channel card.
+`esp32dev` is the default PlatformIO environment and matches the classic ESP32 identified in your upload log. The webpage obtains the pin mapping from firmware and displays the correct GPIO on each channel card. The default PlatformIO environment is `esp32dev`.
 
 Connect the DAC pins to high-impedance analog inputs that accept 0–3.3 V, and connect the boards' grounds together. The DAC is 8-bit, unipolar, and not a calibrated function-generator output. Check the signal with a scope before connecting other equipment.
 
@@ -26,10 +27,10 @@ Connect the DAC pins to high-impedance analog inputs that accept 0–3.3 V, and 
 
 1. Open the `functiongenerator_web` folder in VS Code with PlatformIO installed.
 2. Connect the board over USB.
-3. Select `esp32dev` for a classic ESP32 or `esp32-s2-saola-1` for an ESP32-S2.
-4. Build and upload that environment. PlatformIO installs WiFiManager from `platformio.ini`.
+3. For the classic ESP32, keep/select the default `esp32dev` environment. For an ESP32-S2, select `esp32-s2-saola-1`.
+4. Build and upload that environment (classic ESP32: `pio run -e esp32dev -t upload`). PlatformIO installs WiFiManager from `platformio.ini`.
 5. Open Serial Monitor at 115200 baud.
-6. On first boot, connect your phone or computer to `ESP32-WaveGen-Setup`. If the setup page does not open automatically, browse to `192.168.4.1`.
+6. On first boot, connect your phone or computer to `ESP32_MUXSIGSIM`. If the setup page does not open automatically, browse to `192.168.4.1`.
 7. Select your normal Wi-Fi network and enter its password.
 8. Open the local IP printed in Serial Monitor from a device on the same Wi-Fi network.
 
