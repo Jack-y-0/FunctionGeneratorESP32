@@ -27,7 +27,7 @@ static constexpr float MIN_FREQUENCY_HZ = 0.5f;
 static constexpr float MAX_FREQUENCY_HZ = 10.0f;
 
 enum FaultMode : uint8_t { FAULT_NONE, FAULT_MISSING_PULSE, FAULT_REDUCED_AMPLITUDE, FAULT_BASELINE_SHIFT, FAULT_DROPOUT };
-struct FaultConfig { FaultMode mode; uint64_t expiresAtUs; bool active; };
+struct FaultConfig { FaultMode mode; uint64_t expiresAtUs; uint32_t beatsSinceStart; bool active; bool skipCurrentBeat; };
 struct EventRecord { uint32_t uptimeMs; uint8_t channel; char scenario[20]; char action[8]; };
 
 struct ChannelConfig {
@@ -71,6 +71,8 @@ static bool validWaveform(const String &waveform) {
   return waveform == "sine" || waveform == "square" ||
          waveform == "triangle" || waveform == "sawtooth" || waveform == "ppg" || waveform == "dc";
 }
+
+static String makeRandomPassword();
 
 static void loadChannelSettings() {
   settingsStore.begin("wavegen", false);
@@ -177,11 +179,21 @@ static void onSampleTimer(void *) {
       if (active && faults[i].mode == FAULT_REDUCED_AMPLITUDE) effective.amplitudePercent *= 0.5f;
       if (active && faults[i].mode == FAULT_BASELINE_SHIFT) effective.offsetPercent = fminf(100.0f, effective.offsetPercent + 10.0f);
       float value = normalizedWaveform(effective.waveform, phase[i]);
-      if (active && faults[i].mode == FAULT_MISSING_PULSE && strcmp(effective.waveform, "ppg") == 0) value = 0.05f;
+      if (active && faults[i].mode == FAULT_MISSING_PULSE && strcmp(effective.waveform, "ppg") == 0 && faults[i].skipCurrentBeat) value = 0.05f;
       dacWrite(DAC_PINS[i], sampleToDacCode(effective, value));
     }
     phase[i] += local[i].frequencyHz / static_cast<float>(SAMPLE_RATE_HZ);
-    if (phase[i] >= 1.0f) phase[i] -= floorf(phase[i]);
+    if (phase[i] >= 1.0f) {
+      phase[i] -= floorf(phase[i]);
+      if (active && faults[i].mode == FAULT_MISSING_PULSE) {
+        portENTER_CRITICAL(&configMux);
+        if (faultConfig[i].active && faultConfig[i].mode == FAULT_MISSING_PULSE) {
+          ++faultConfig[i].beatsSinceStart;
+          faultConfig[i].skipCurrentBeat = (faultConfig[i].beatsSinceStart % 3U) == 0U;
+        }
+        portEXIT_CRITICAL(&configMux);
+      }
+    }
   }
 }
 static void handleState() {
@@ -310,6 +322,13 @@ static void handleFaultUpdate() {
   }
   uint32_t durationSeconds = 0;
   if (mode != FAULT_NONE) {
+    portENTER_CRITICAL(&configMux);
+    const bool outputEnabled = channelConfig[index].enabled;
+    portEXIT_CRITICAL(&configMux);
+    if (!outputEnabled) {
+      server.send(409, "application/json", "{\"error\":\"Enable this output before starting a fault scenario\"}");
+      return;
+    }
     durationSeconds = server.arg("duration").toInt();
     if (durationSeconds < 1 || durationSeconds > 600) {
       server.send(400, "application/json", "{\"error\":\"Duration must be 1 to 600 seconds\"}");
@@ -329,6 +348,8 @@ static void handleFaultUpdate() {
   faultConfig[index].mode = mode;
   faultConfig[index].active = mode != FAULT_NONE;
   faultConfig[index].expiresAtUs = esp_timer_get_time() + static_cast<uint64_t>(durationSeconds) * 1000000ULL;
+  faultConfig[index].beatsSinceStart = 0;
+  faultConfig[index].skipCurrentBeat = false;
   portEXIT_CRITICAL(&configMux);
   recordFaultEvent(index, mode, mode == FAULT_NONE ? "stopped" : "started");
   server.send(200, "application/json", "{\"ok\":true}");
