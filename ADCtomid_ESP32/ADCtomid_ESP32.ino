@@ -1,8 +1,8 @@
-// set esp32 ADC to midpoint (2047) on GPIO25, different value on GPIO26 (1027)
+// ESP32-S2 DAC level test: midpoint on GPIO17 and quarter-scale on GPIO18
 
 void setup() {
-  dacWrite(25, 128); // Sets GPIO25 to midrange
-  dacWrite(26, 64); // Sets GPIO26 to midrange   
+  dacWrite(17, 128); // ESP32-S2 DAC1: midpoint
+  dacWrite(18, 64);  // ESP32-S2 DAC2: quarter-scale
 }
 
 void loop() {
