@@ -5,7 +5,7 @@ This feature branch targets the classic ESP32 DevKit (`esp32dev`) selected for t
 ## Scope capacity
 
 - **Analog:** GPIO32, 33, 34, 35, 36, and 39 (six exposed ADC1 inputs on the common ESP32-WROOM DevKit). Samples are read in sequence at about 200 frames/s per input and displayed as raw 12-bit counts.
-- **Digital PWM:** GPIO4, 13, 14, 16, 17, 18, 19, 21, 22, 23, 27, 32, 33, 34, 35, 36, and 39. Each input can be enabled independently; the page reports frequency and duty cycle and draws a reconstructed pulse trace.
+- **Digital PWM:** GPIO4, 13, 14, 16, 17, 18, 19, 21, 22, 23, 27, 32, 33, 34, 35, 36, and 39. The page lets you select one or more pins for capture and overlays their reconstructed pulse traces on a shared full-width display; frequency and duty cycle are reported in the legend. Analog and digital inputs are selected in separate modes.
 
 The analog ADC channels are multiplexed, not simultaneous. ADC2 is not included because the webpage uses Wi-Fi. PWM edge capture is for low-frequency signal checks, not a high-speed logic analyzer.
 
@@ -20,4 +20,4 @@ pio run -e esp32dev
 pio run -e esp32dev -t upload
 ```
 
-Wi-Fi setup uses `ESP32_MUXSIGSIM`. The temporary setup password and generated web password (`admin`) are printed to Serial Monitor at 115200 baud. The webpage contains separate **Wave generator** and **Oscilloscope inputs** views.
+Wi-Fi setup uses `ESP32_MUXSIGSIM`. The temporary setup password and generated web password (`admin`) are printed to Serial Monitor at 115200 baud. The **Wave generator** view overlays either or both DAC previews on one full-width plot. Each output keeps independent waveform, frequency, amplitude, offset, and output-enable controls; the plot time window is adjustable from 0.25 to 10 seconds. The preview reflects settings even while the hardware output is off and labels that trace “preview only.” The **Oscilloscope inputs** view uses one full-width graph with selectable ADC or PWM channels; selected ADC traces share one graph, and selected PWM traces use separate lanes within one graph. The ADC time window is limited to the 1.28-second sample buffer; the PWM trace is reconstructed from measured edge timing. The generator preview remains visible while output is off and is labeled “preview only.”
