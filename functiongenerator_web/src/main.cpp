@@ -692,12 +692,12 @@ void setup() {
   const esp_err_t createResult = esp_timer_create(&timerArgs, &sampleTimer);
   if (createResult != ESP_OK) {
     Serial.printf("Could not create sample timer (error %d).\n", createResult);
-    return;
+  } else {
+    const esp_err_t startResult = esp_timer_start_periodic(sampleTimer, SAMPLE_PERIOD_US);
+    sampleTimerStarted = startResult == ESP_OK;
+    if (!sampleTimerStarted) Serial.printf("Could not start sample timer (error %d).\n", startResult);
+    else Serial.printf("DAC sample timer started at %lu Hz.\n", static_cast<unsigned long>(SAMPLE_RATE_HZ));
   }
-  const esp_err_t startResult = esp_timer_start_periodic(sampleTimer, SAMPLE_PERIOD_US);
-  sampleTimerStarted = startResult == ESP_OK;
-  if (!sampleTimerStarted) Serial.printf("Could not start sample timer (error %d).\n", startResult);
-  else Serial.printf("DAC sample timer started at %lu Hz.\n", static_cast<unsigned long>(SAMPLE_RATE_HZ));
 
   const BaseType_t scopeTaskResult = xTaskCreatePinnedToCore(
       scopeSamplerTask, "scope_adc", 4096, nullptr, 2, nullptr, 1);
