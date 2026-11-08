@@ -1,70 +1,23 @@
-# Web-Controlled Function Generator
+# Web-Controlled Function Generator and Scope — Classic ESP32
 
-This PlatformIO project adds a web interface for two independently controlled DAC outputs. It supports the classic ESP32 DevKit (`esp32dev`, the default target) and ESP32-S2 (`esp32-s2-saola-1`). The original standalone sketches remain in their existing folders.
+This feature branch targets the classic ESP32 DevKit (`esp32dev`) selected for the project. It combines the existing two-channel DAC waveform generator with six analog ADC scope inputs and 17 configurable digital PWM edge-capture inputs. Channel 1 and Channel 2 output controls remain independent; both outputs start disabled after reboot.
 
-## Waveforms and controls
+## Scope capacity
 
-- Sine, square, triangle, sawtooth, synthetic PPG pulse, and DC level
-- Independent waveform, frequency, amplitude, offset, and enable control for each channel
-- Frequency range: 0.5–10 Hz; PPG mode corresponds to 30–600 beats/minute
-- Per-channel waveform preview and DAC/timer diagnostics
-- Outputs start disabled after every reboot; enable each channel separately from the webpage
-- Settings persist across reboot, but the enabled state never does
+- **Analog:** GPIO32, 33, 34, 35, 36, and 39 (six exposed ADC1 inputs on the common ESP32-WROOM DevKit). Samples are read in sequence at about 200 frames/s per input and displayed as raw 12-bit counts.
+- **Digital PWM:** GPIO4, 13, 14, 16, 17, 18, 19, 21, 22, 23, 27, 32, 33, 34, 35, 36, and 39. Each input can be enabled independently; the page reports frequency and duty cycle and draws a reconstructed pulse trace.
 
-## Pins and wiring
+The analog ADC channels are multiplexed, not simultaneous. ADC2 is not included because the webpage uses Wi-Fi. PWM edge capture is for low-frequency signal checks, not a high-speed logic analyzer.
 
-| Target | DAC1 | DAC2 |
-|---|---:|---:|
-| Classic ESP32 (`esp32dev`) | GPIO25 | GPIO26 |
-| ESP32-S2 (`esp32-s2-saola-1`) | GPIO17 | GPIO18 |
+## Electrical limits
 
-The built-in DAC outputs are fixed to these pins and cannot be reassigned from the webpage. Outputs are unipolar, nominally 0–3.3 V, and 8-bit; they are not calibrated. Connect generator and receiver grounds together, and connect only to a high-impedance input that accepts this voltage range. Verify with an oscilloscope before connecting other equipment.
+Never apply a negative voltage or more than 3.3 V to an ESP32 input; GPIOs are not 5 V tolerant. At the configured ADC attenuation, full scale may be around 3.1 V and varies by chip. ADC results are uncalibrated. Use an appropriately protected attenuator/buffer for external signals and verify actual values with a scope or meter.
 
-## Build and upload
-
-Open `functiongenerator_web` in PlatformIO. The default target is `esp32dev`:
+## Upload
 
 ```sh
 pio run -e esp32dev
 pio run -e esp32dev -t upload
 ```
 
-For an ESP32-S2 board, select `esp32-s2-saola-1` instead. Do not upload the S2 image to a classic ESP32 or vice versa.
-
-On first setup, the Wi-Fi portal is named `ESP32_MUXSIGSIM`. Its temporary password and the web login (`admin` plus its generated password) are printed to Serial Monitor at 115200 baud. After connecting the device to Wi-Fi, open the IP printed in Serial Monitor from a device on the same network.
-
-## Signal settings
-
-Amplitude is the requested peak-to-peak span as a percentage of nominal DAC range. Offset is the waveform center as a percentage of that range. Firmware clips output to 0–3.3 V; for a 100% amplitude waveform, set offset to 50%. A 0% amplitude waveform is flat. DC mode outputs the selected offset level.
-
-The **Load DC midpoint test** button sets DAC1 to code 128 and DAC2 to code 64; it does not enable either output. Enable only the channel(s) you want to run. The page shows timer progress and the latest DAC code to help distinguish a disabled channel from a stalled signal timer.
-
-## Waveform command IDs
-
-| Command | Waveform |
-|---|---|
-| `a0` | Sine |
-| `a1` | Square |
-| `a2` | Triangle |
-| `a3` | Sawtooth |
-| `a4` | Synthetic PPG pulse |
-| `a5` | DC level |
-
-The webpage has a separate waveform button on each channel. USB Serial accepts `ch1` or `ch2` to select a channel, followed by `a0`–`a5` to select its waveform.
-
-## Version history
-
-Git commits identify the versions below; no numbered release scheme has been adopted yet. Dates use Asia/Beirut time. Earlier entries are selected milestones, not the complete Git log.
-
-| Date | Revision | Changes |
-|---|---|---|
-| 2026-11-08 | This documentation revision | Rename the standards proposal to Safety Gap assesment and separate hardware work from software/documentation work. |
-| 2026-11-08 | `194a978` | Add version history and a standards proposal for review; no firmware changes. |
-| 2026-11-08 | `75c28a1` | Fix controls editing stale channel settings; animate the simulated waveform over a fixed 2-second window so frequency changes affect cycle spacing. |
-| 2026-11-07 | `6d05c0d` | Make API authentication explicit and show authentication failures. |
-| 2026-11-07 | `ab46196` | Serialize channel updates and display DAC diagnostics. |
-| 2026-11-07 | `f766ec5` | Add DAC sample timer and sample diagnostics. |
-| 2026-11-07 | `1fadb59` | Remove the BOOT pin gate from the DAC timer. |
-| 2026-11-07 | `5199934` | Ignore stale state polling responses during channel edits. |
-
-The animated graph is a simulated preview, not a measurement of the DAC output. See the [Safety Gap assesment](docs/Safety%20Gap%20assesment.md) for candidate standards awaiting approval.
+Wi-Fi setup uses `ESP32_MUXSIGSIM`. The temporary setup password and generated web password (`admin`) are printed to Serial Monitor at 115200 baud. The webpage contains separate **Wave generator** and **Oscilloscope inputs** views.
