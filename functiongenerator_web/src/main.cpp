@@ -8,9 +8,13 @@
 #include <math.h>
 #include "wavegen_page.h"
 
+#if !defined(CONFIG_IDF_TARGET_ESP32) || defined(CONFIG_IDF_TARGET_ESP32S2)
+#error "This multichannel scope branch is mapped for the classic ESP32 DevKit (esp32dev)."
+#endif
+
 // Pin selection follows the PlatformIO target: classic ESP32 uses GPIO25/26;
 // ESP32-S2 uses GPIO17/18 for its built-in DAC channels.
-static constexpr const char *FIRMWARE_BUILD_ID = "signal-fix-2026-11-07";
+static constexpr const char *FIRMWARE_BUILD_ID = "scope-pwm-2026-11-08";
 #if defined(CONFIG_IDF_TARGET_ESP32S2)
 static constexpr const char *BOARD_TARGET_NAME = "ESP32-S2";
 static constexpr uint8_t DAC_PINS[2] = {17, 18};
@@ -25,6 +29,12 @@ static constexpr uint32_t SAMPLE_PERIOD_US = 1000000UL / SAMPLE_RATE_HZ;
 static constexpr float DAC_FULL_SCALE_V = 3.3f;
 static constexpr float MIN_FREQUENCY_HZ = 0.5f;
 static constexpr float MAX_FREQUENCY_HZ = 10.0f;
+static constexpr uint8_t ADC_INPUT_PINS[] = {32, 33, 34, 35, 36, 39};
+static constexpr uint8_t ADC_SCOPE_CHANNELS = sizeof(ADC_INPUT_PINS) / sizeof(ADC_INPUT_PINS[0]);
+static constexpr uint16_t SCOPE_BUFFER_LENGTH = 256;
+static constexpr uint16_t SCOPE_SAMPLE_PERIOD_MS = 5; // 200 frames/s across all ADC1 inputs
+static constexpr uint8_t PWM_INPUT_PINS[] = {4, 13, 14, 16, 17, 18, 19, 21, 22, 23, 27, 32, 33, 34, 35, 36, 39};
+static constexpr uint8_t PWM_SCOPE_CHANNELS = sizeof(PWM_INPUT_PINS) / sizeof(PWM_INPUT_PINS[0]);
 
 enum FaultMode : uint8_t { FAULT_NONE, FAULT_MISSING_PULSE, FAULT_REDUCED_AMPLITUDE, FAULT_BASELINE_SHIFT, FAULT_DROPOUT };
 struct FaultConfig { FaultMode mode; uint64_t expiresAtUs; uint32_t beatsSinceStart; bool active; bool skipCurrentBeat; };
@@ -36,6 +46,14 @@ struct ChannelConfig {
   float amplitudePercent; // peak-to-peak span as a percentage of DAC full scale
   float offsetPercent;    // center voltage as a percentage of DAC full scale
   bool enabled;
+};
+struct PwmCapture {
+  uint8_t pin;
+  volatile bool enabled;
+  volatile uint32_t lastRiseUs;
+  volatile uint32_t periodUs;
+  volatile uint32_t highUs;
+  volatile uint32_t lastEdgeUs;
 };
 
 // Start both outputs disabled; enable a channel explicitly from the webpage.
@@ -53,6 +71,21 @@ static esp_timer_handle_t sampleTimer = nullptr;
 static volatile uint32_t sampleTicks = 0;
 static volatile uint8_t lastDacCodes[2] = {0, 0};
 static bool sampleTimerStarted = false;
+static uint16_t scopeSamples[ADC_SCOPE_CHANNELS][SCOPE_BUFFER_LENGTH] = {};
+static uint16_t scopeWriteIndex = 0;
+static uint16_t scopeSampleCount = 0;
+static portMUX_TYPE scopeMux = portMUX_INITIALIZER_UNLOCKED;
+static PwmCapture pwmCapture[PWM_SCOPE_CHANNELS] = {
+  {4, false, 0, 0, 0, 0}, {13, false, 0, 0, 0, 0},
+  {14, false, 0, 0, 0, 0}, {16, false, 0, 0, 0, 0},
+  {17, false, 0, 0, 0, 0}, {18, false, 0, 0, 0, 0},
+  {19, false, 0, 0, 0, 0}, {21, false, 0, 0, 0, 0},
+  {22, false, 0, 0, 0, 0}, {23, false, 0, 0, 0, 0},
+  {27, false, 0, 0, 0, 0}, {32, false, 0, 0, 0, 0},
+  {33, false, 0, 0, 0, 0}, {34, false, 0, 0, 0, 0},
+  {35, false, 0, 0, 0, 0}, {36, false, 0, 0, 0, 0},
+  {39, false, 0, 0, 0, 0}
+};
 static WebServer server(80);
 static Preferences settingsStore;
 static bool settingsDirty = false;
@@ -205,6 +238,139 @@ static void onSampleTimer(void *) {
       }
     }
   }
+}
+
+static void scopeSamplerTask(void *) {
+  TickType_t wakeTime = xTaskGetTickCount();
+  const TickType_t periodTicks = pdMS_TO_TICKS(SCOPE_SAMPLE_PERIOD_MS);
+  while (true) {
+    uint16_t frame[ADC_SCOPE_CHANNELS];
+    for (uint8_t i = 0; i < ADC_SCOPE_CHANNELS; ++i) {
+      frame[i] = static_cast<uint16_t>(analogRead(ADC_INPUT_PINS[i]));
+    }
+    portENTER_CRITICAL(&scopeMux);
+    for (uint8_t i = 0; i < ADC_SCOPE_CHANNELS; ++i) {
+      scopeSamples[i][scopeWriteIndex] = frame[i];
+    }
+    scopeWriteIndex = (scopeWriteIndex + 1) % SCOPE_BUFFER_LENGTH;
+    if (scopeSampleCount < SCOPE_BUFFER_LENGTH) ++scopeSampleCount;
+    portEXIT_CRITICAL(&scopeMux);
+    vTaskDelayUntil(&wakeTime, periodTicks);
+  }
+}
+
+static void IRAM_ATTR pwmCaptureIsr(void *argument) {
+  PwmCapture *capture = static_cast<PwmCapture *>(argument);
+  if (!capture || !capture->enabled) return;
+  const uint32_t nowUs = static_cast<uint32_t>(micros());
+  const bool isHigh = digitalRead(capture->pin) == HIGH;
+  if (isHigh) {
+    const uint32_t previousRise = capture->lastRiseUs;
+    if (previousRise != 0) capture->periodUs = nowUs - previousRise;
+    capture->lastRiseUs = nowUs;
+  } else {
+    const uint32_t rise = capture->lastRiseUs;
+    if (rise != 0) capture->highUs = nowUs - rise;
+  }
+  capture->lastEdgeUs = nowUs;
+}
+
+static void handleScopeRead() {
+  static uint16_t local[ADC_SCOPE_CHANNELS][SCOPE_BUFFER_LENGTH];
+  uint16_t count;
+  uint16_t writeIndex;
+  portENTER_CRITICAL(&scopeMux);
+  count = scopeSampleCount;
+  writeIndex = scopeWriteIndex;
+  memcpy(local, scopeSamples, sizeof(local));
+  portEXIT_CRITICAL(&scopeMux);
+
+  String json;
+  json.reserve(12000);
+  json = "{\"sampleRateHzPerChannel\":";
+  json += String(1000 / SCOPE_SAMPLE_PERIOD_MS);
+  json += ",\"sampleCount\":";
+  json += String(count);
+  json += ",\"bufferCapacity\":";
+  json += String(SCOPE_BUFFER_LENGTH);
+  json += ",\"pins\":[";
+  for (uint8_t i = 0; i < ADC_SCOPE_CHANNELS; ++i) {
+    if (i) json += ',';
+    json += String(ADC_INPUT_PINS[i]);
+  }
+  json += "],\"channels\":[";
+  const uint16_t first = count == SCOPE_BUFFER_LENGTH ? writeIndex : 0;
+  for (uint8_t channel = 0; channel < ADC_SCOPE_CHANNELS; ++channel) {
+    if (channel) json += ',';
+    json += "{\"pin\":";
+    json += String(ADC_INPUT_PINS[channel]);
+    json += ",\"samples\":[";
+    for (uint16_t sample = 0; sample < count; ++sample) {
+      if (sample) json += ',';
+      json += String(local[channel][(first + sample) % SCOPE_BUFFER_LENGTH]);
+    }
+    json += "]}";
+  }
+  json += "]}";
+  server.send(200, "application/json", json);
+}
+
+static void handlePwmRead() {
+  const uint32_t nowUs = static_cast<uint32_t>(esp_timer_get_time());
+  String json;
+  json.reserve(1800);
+  json = "{\"channels\":[";
+  for (uint8_t i = 0; i < PWM_SCOPE_CHANNELS; ++i) {
+    if (i) json += ',';
+    const PwmCapture &capture = pwmCapture[i];
+    const uint32_t period = capture.periodUs;
+    const uint32_t high = capture.highUs;
+    const uint32_t age = nowUs - capture.lastEdgeUs;
+    const bool valid = capture.enabled && period > 0 && age < 3000000UL;
+    json += "{\"pin\":";
+    json += String(capture.pin);
+    json += ",\"enabled\":";
+    json += capture.enabled ? "true" : "false";
+    json += ",\"valid\":";
+    json += valid ? "true" : "false";
+    json += ",\"frequencyHz\":";
+    json += valid ? String(1000000.0f / period, 2) : String("null");
+    json += ",\"dutyPercent\":";
+    json += valid ? String((100.0f * high) / period, 1) : String("null");
+    json += "}";
+  }
+  json += "]}";
+  server.send(200, "application/json", json);
+}
+
+static void handlePwmConfig() {
+  if (!server.hasArg("channel") || !server.hasArg("enabled")) {
+    server.send(400, "application/json", "{\"error\":\"Missing channel or enabled flag\"}");
+    return;
+  }
+  const int index = server.arg("channel").toInt();
+  if (index < 0 || index >= PWM_SCOPE_CHANNELS) {
+    server.send(400, "application/json", "{\"error\":\"PWM channel index out of range\"}");
+    return;
+  }
+  PwmCapture &capture = pwmCapture[index];
+  const bool enabled = server.arg("enabled") == "1";
+  if (capture.enabled == enabled) {
+    server.send(200, "application/json", "{\"ok\":true}");
+    return;
+  }
+  if (capture.enabled) detachInterrupt(capture.pin);
+  capture.enabled = false;
+  capture.lastRiseUs = 0;
+  capture.periodUs = 0;
+  capture.highUs = 0;
+  capture.lastEdgeUs = 0;
+  if (enabled) {
+    pinMode(capture.pin, INPUT);
+    capture.enabled = true;
+    attachInterruptArg(capture.pin, pwmCaptureIsr, &capture, CHANGE);
+  }
+  server.send(200, "application/json", "{\"ok\":true}");
 }
 static void handleState() {
   ChannelConfig local[2];
@@ -471,6 +637,9 @@ static void beginWebServer() {
   server.on("/", HTTP_GET, []() { if (!requireWebAuth()) return; server.send_P(200, "text/html; charset=utf-8", INDEX_HTML); });
   server.on("/api/state", HTTP_GET, []() { if (!requireWebAuth()) return; handleState(); });
   server.on("/api/channel", HTTP_POST, []() { if (!requireWebAuth()) return; handleChannelUpdate(); });
+  server.on("/api/scope", HTTP_GET, []() { if (!requireWebAuth()) return; handleScopeRead(); });
+  server.on("/api/pwm", HTTP_GET, []() { if (!requireWebAuth()) return; handlePwmRead(); });
+  server.on("/api/pwm/config", HTTP_POST, []() { if (!requireWebAuth()) return; handlePwmConfig(); });
   server.on("/api/fault", HTTP_POST, []() { if (!requireWebAuth()) return; handleFaultUpdate(); });
   server.on("/api/events", HTTP_GET, []() { if (!requireWebAuth()) return; handleFaultEvents(); });
   server.onNotFound([]() { server.send(404, "text/plain", "Not found"); });
@@ -491,6 +660,10 @@ void setup() {
   Serial.println("Serial: send ch1/ch2 then a0-a5 to select waveform.");
   loadChannelSettings();
   Serial.println("Saved waveform settings loaded; outputs remain disabled.");
+
+  analogReadResolution(12);
+  analogSetAttenuation(ADC_11db);
+  for (uint8_t i = 0; i < ADC_SCOPE_CHANNELS; ++i) pinMode(ADC_INPUT_PINS[i], INPUT);
 
   // Hold both outputs at zero until the user enables them from the webpage.
   dacWrite(DAC_PINS[0], 0);
@@ -519,12 +692,18 @@ void setup() {
   const esp_err_t createResult = esp_timer_create(&timerArgs, &sampleTimer);
   if (createResult != ESP_OK) {
     Serial.printf("Could not create sample timer (error %d).\n", createResult);
-    return;
+  } else {
+    const esp_err_t startResult = esp_timer_start_periodic(sampleTimer, SAMPLE_PERIOD_US);
+    sampleTimerStarted = startResult == ESP_OK;
+    if (!sampleTimerStarted) Serial.printf("Could not start sample timer (error %d).\n", startResult);
+    else Serial.printf("DAC sample timer started at %lu Hz.\n", static_cast<unsigned long>(SAMPLE_RATE_HZ));
   }
-  const esp_err_t startResult = esp_timer_start_periodic(sampleTimer, SAMPLE_PERIOD_US);
-  sampleTimerStarted = startResult == ESP_OK;
-  if (!sampleTimerStarted) Serial.printf("Could not start sample timer (error %d).\n", startResult);
-  else Serial.printf("DAC sample timer started at %lu Hz.\n", static_cast<unsigned long>(SAMPLE_RATE_HZ));
+
+  const BaseType_t scopeTaskResult = xTaskCreatePinnedToCore(
+      scopeSamplerTask, "scope_adc", 4096, nullptr, 2, nullptr, 1);
+  if (scopeTaskResult != pdPASS) Serial.println("Could not start ADC scope sampling task.");
+  else Serial.printf("ADC scope active: %u ADC1 channels at %lu frames/s each.\n",
+                     ADC_SCOPE_CHANNELS, static_cast<unsigned long>(1000 / SCOPE_SAMPLE_PERIOD_MS));
 }
 
 void loop() {

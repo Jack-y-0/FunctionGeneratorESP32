@@ -11,11 +11,14 @@ static const char INDEX_HTML[] PROGMEM = R"WAVEGENHTML(
   <title>ESP32 Wave Generator</title>
   <style>
     :root{font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;color:#162238;background:#f4f7fb;font-synthesis:none}
-    *{box-sizing:border-box}body{margin:0;min-width:320px}.wrap{max-width:1050px;margin:auto;padding:28px 18px 48px}
+    *{box-sizing:border-box}body{margin:0;min-width:320px}.wrap{width:100%;max-width:none;margin:auto;padding:24px clamp(14px,2.2vw,36px) 48px}#generatorView{max-width:1050px;margin:0 auto}
     header{display:flex;justify-content:space-between;align-items:center;gap:20px;margin:0 0 24px}
     h1{font-size:clamp(1.5rem,4vw,2.2rem);margin:0;letter-spacing:-.04em}.sub{color:#607089;margin:7px 0 0;font-size:.95rem}
     .badge{display:flex;align-items:center;gap:8px;padding:9px 12px;border:1px solid #dce4ef;border-radius:999px;background:#fff;color:#53637b;font-size:.82rem;white-space:nowrap}
     .dot{width:9px;height:9px;border-radius:50%;background:#d39135}.dot.online{background:#27a776;box-shadow:0 0 0 4px #e4f6ef}
+    .viewtabs{display:flex;gap:10px;margin:0 0 18px}.viewtabs button{border:1px solid #ced8e6;background:#fff;color:#42536e;border-radius:10px;padding:10px 16px;font-weight:700}.viewtabs button.active{background:#29416e;color:#fff;border-color:#29416e}
+    .scopegrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.wide-panel{background:#fff;border:1px solid #dce4ef;border-radius:16px;padding:16px;margin:0 0 18px}.wide-panel canvas{width:100%;height:min(52vh,520px);min-height:300px;border:1px solid #e1e8f1;border-radius:10px;display:block}.plot-tools{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin:8px 0 12px}.plot-tools label{font-weight:650;color:#45556d}.plot-tools select{width:auto;min-width:130px}.channel-picks{display:flex;gap:8px;flex-wrap:wrap;margin:8px 0 14px}.channel-pick{display:inline-flex;align-items:center;gap:6px;border:1px solid #d7e0ec;border-radius:9px;background:#f9fbfd;padding:7px 10px;color:#43536b;font-size:.84rem}.channel-pick input{accent-color:#426de0}.legend{display:flex;gap:14px;flex-wrap:wrap;color:#53637b;font-size:.83rem;margin-top:8px}.legend span{display:inline-flex;align-items:center;gap:6px}.legend i{width:12px;height:4px;border-radius:3px;display:inline-block}.scope-mode{display:flex;gap:8px;margin:12px 0}.scope-mode button{border:1px solid #ced8e6;background:#fff;color:#42536e;border-radius:9px;padding:8px 13px;font-weight:700}.scope-mode button.active{background:#29416e;color:#fff;border-color:#29416e}.scope-card{background:#fff;border:1px solid #dce4ef;border-radius:16px;padding:16px;min-width:0}.scope-card h3{margin:0 0 8px}.scope-card canvas{display:block;width:100%;height:150px;border:1px solid #e1e8f1;border-radius:10px;background:linear-gradient(#fff,#fbfdff)}.scope-meta{color:#64748b;font-size:.9rem;margin-top:8px}.scope-enable{display:flex;align-items:center;gap:8px;margin:8px 0}.scope-section-title{margin:22px 0 8px}
+    @media(max-width:760px){.scopegrid{grid-template-columns:1fr}.viewtabs{position:sticky;top:0;background:#f4f7fb;padding:8px 0;z-index:2}}
     .notice{padding:12px 15px;background:#fff8e8;border:1px solid #f4dfb5;border-radius:12px;color:#755721;font-size:.9rem;line-height:1.5;margin-bottom:18px}
     .grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px}.card{background:white;border:1px solid #e0e7f0;border-radius:18px;padding:18px;box-shadow:0 8px 26px #1a315008}
     .cardhead{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}.cardhead h2{margin:0;font-size:1.13rem}.pin{font-size:.8rem;color:#61718a;background:#f0f4f9;border-radius:7px;padding:5px 8px}
@@ -35,11 +38,30 @@ static const char INDEX_HTML[] PROGMEM = R"WAVEGENHTML(
       <div><h1>ESP32 Wave Generator</h1><p class="sub">Two independently controlled DAC outputs, including a synthetic PPG pulse.</p></div>
       <div class="badge"><span class="dot" id="connectionDot"></span><span id="connectionText">Connecting…</span><span id="firmwareBuild"></span></div>
     </header>
+    <nav class="viewtabs" aria-label="Device view">
+      <button id="generatorTab" class="active" type="button">Wave generator</button>
+      <button id="scopeTab" type="button">Oscilloscope inputs</button>
+    </nav>
+    <section id="generatorView">
     <div class="notice"><strong>DAC outputs:</strong> Pin numbers depend on the selected PlatformIO board target and are shown on each channel card. Output is unipolar and nominally 0–3.3 V. The built-in DAC is 8-bit and is for low-frequency signal testing, not a calibrated instrument output.</div>
     <div class="presetbar"><button id="dcPreset" type="button">Load DC midpoint test</button><span>DAC1 = 128/255; DAC2 = 64/255 · enable each channel below</span></div>
     <section class="grid" id="channels"></section>
     <section class="card eventlog"><h2>Fault event log</h2><ol id="eventLog"><li>No fault events yet.</li></ol><p class="sub">Times are elapsed since device boot; the log is kept in RAM and clears after reboot.</p></section>
     <p class="foot"><strong>Wiring:</strong> connect the DAC pins shown on the channel cards to high-impedance ADC inputs on the receiving board, and connect both boards’ GND pins together. Do not connect the output to equipment that expects negative voltage, voltage above 3.3 V, or a low-impedance load. USB Serial commands: `ch1` or `ch2` selects a channel, then `a0`–`a5` selects its waveform.</p>
+    </section>
+    <section id="scopeView" hidden>
+      <div class="notice"><strong>Input limits:</strong> ADC inputs accept 0–3.3 V maximum and are not 5 V tolerant. Never connect negative voltage or a signal above 3.3 V directly. Use a properly protected attenuator/buffer for external signals. ADC plots show raw 12-bit counts; voltage is approximate and uncalibrated.</div>
+      <h2 class="scope-section-title">Input scope · selectable channels</h2>
+      <p class="sub">Choose analog ADC1 or digital PWM inputs, then select one or more pins to overlay on the full-width display. ADC traces use raw 12-bit counts and are sampled sequentially at about 200 frames/s per pin. PWM traces are reconstructed from edge timing and are intended for low-frequency checks.</p>
+      <div class="scope-mode"><button id="analogMode" class="active" type="button">Analog ADC1</button><button id="digitalMode" type="button">Digital PWM</button></div>
+      <section class="wide-panel">
+        <div class="plot-tools"><div id="scopeSelectorLabel">Select ADC inputs to display</div><label for="scopeTimebase">Time window <select id="scopeTimebase"><option value="0.1">0.1 s</option><option value="0.25">0.25 s</option><option value="0.5">0.5 s</option><option value="1" selected>1 s</option><option value="1.28">1.28 s</option><option value="2">2 s</option><option value="5">5 s</option></select></label></div>
+        <div class="channel-picks" id="scopeChannelPicks"></div>
+        <canvas id="inputScopePlot" width="1600" height="520" aria-label="Selected analog or PWM input traces"></canvas>
+        <div class="legend" id="scopeLegend"></div>
+      </section>
+      <p class="foot" id="scopeStatus">Waiting for scope samples…</p>
+    </section>
   </main>
 <script>
 const channelDefaults=[
@@ -78,6 +100,39 @@ async function sendFault(i){const mode=document.getElementById(`fault${i}`).valu
 async function loadEvents(){try{const r=await fetch('/api/events',{credentials:'same-origin'});if(r.status===401){document.getElementById('eventLog').innerHTML='<li>Web login rejected; reload and sign in.</li>';return}if(!r.ok)throw new Error();const data=await r.json(),list=document.getElementById('eventLog');if(!data.events.length){list.innerHTML='<li>No fault events yet.</li>';return}list.innerHTML=data.events.slice().reverse().map(e=>`<li>+${(e.uptimeMs/1000).toFixed(1)} s · Channel ${e.channel} · ${e.scenario.replaceAll('_',' ')} · ${e.action}</li>`).join('')}catch(e){}}
 function setOnline(online){document.getElementById('connectionDot').classList.toggle('online',online);document.getElementById('connectionText').textContent=online?'ESP32 connected':'Connection lost'}
 async function loadState(){const requestRevisions=channelRevision.slice();try{const r=await fetch('/api/state',{credentials:'same-origin'});if(r.status===401){document.getElementById('firmwareBuild').textContent='· web login rejected (401)';document.querySelectorAll('[id^=signalDiag]').forEach(el=>el.textContent='API authentication failed; reload the page and sign in as admin');setOnline(false);return}if(!r.ok)throw new Error('HTTP '+r.status);const state=await r.json();document.getElementById('firmwareBuild').textContent=state.firmware?'· '+state.firmware:'· firmware ID missing';const hadPriorTicks=previousTimerTicks!==null,timerAdvancing=hadPriorTicks&&Number(state.timerTicks)!==previousTimerTicks;previousTimerTicks=Number(state.timerTicks);state.channels.forEach((s,i)=>{document.getElementById(`pinLabel${i}`).textContent=`GPIO${state.pins[i]} · DAC`;if(pendingUpdates[i]||requestRevisions[i]!==channelRevision[i])return;channels[i]={...channels[i],...s,pin:state.pins[i]};document.getElementById(`freq${i}`).value=channels[i].frequency;document.getElementById(`amp${i}`).value=channels[i].amplitude;document.getElementById(`offset${i}`).value=channels[i].offset;document.getElementById(`enable${i}`).checked=channels[i].enabled;const diag=document.getElementById(`signalDiag${i}`);if(typeof state.timerRunning!=='boolean'||typeof state.timerTicks!=='number')diag.textContent='Firmware is missing signal diagnostics; upload the latest build';else if(!state.timerRunning)diag.textContent='DAC sample timer did not start';else if(!hadPriorTicks)diag.textContent='Timer started; checking activity…';else if(!timerAdvancing)diag.textContent='Timer is not advancing';else if(!s.enabled)diag.textContent='Timer running; output disabled (DAC code 0)';else if(s.waveform!=='dc'&&Number(s.amplitude)===0)diag.textContent='Timer running; amplitude is 0%, so this waveform is flat';else diag.textContent=`Timer running · GPIO${state.pins[i]} · latest DAC code ${state.dacCodes[i]}/255`;render(i)});setOnline(true)}catch(e){setOnline(false)}}
+const adcPins=[32,33,34,35,36,39],pwmPins=[4,13,14,16,17,18,19,21,22,23,27,32,33,34,35,36,39],scopeColors=['#2463eb','#d34f42','#15836b','#8b5cf6','#d58b13','#168ca4','#b23d87','#697a25','#187da1','#cc6c2b','#4c54ae','#208a57','#8753a2','#ac4444','#2c708d','#785c28','#546277'];
+let scopePollTimer=null,pwmPollTimer=null,pwmBusy=Array(pwmPins.length).fill(false),pwmRevision=Array(pwmPins.length).fill(0),pwmQueues=pwmPins.map(()=>Promise.resolve()),scopeMode='analog',scopeCache=null,pwmCache=null;
+const scopeSelected={analog:new Set([32]),digital:new Set()};
+function renderScopePicks(){const pins=scopeMode==='analog'?adcPins:pwmPins,host=document.getElementById('scopeChannelPicks'),timebase=document.getElementById('scopeTimebase');document.getElementById('scopeSelectorLabel').textContent=scopeMode==='analog'?'Select ADC inputs to display':'Select PWM inputs to capture and display';timebase.querySelectorAll('option').forEach(option=>{option.disabled=scopeMode==='analog'&&Number(option.value)>1.28});if(scopeMode==='analog'&&Number(timebase.value)>1.28)timebase.value='1.28';host.innerHTML=pins.map(pin=>`<label class="channel-pick"><input type="checkbox" data-scope-pin="${pin}" ${scopeSelected[scopeMode].has(pin)?'checked':''}> GPIO${pin}</label>`).join('');host.querySelectorAll('input').forEach(input=>input.addEventListener('change',async e=>{const pin=Number(e.target.dataset.scopePin),index=pins.indexOf(pin);if(e.target.checked)scopeSelected[scopeMode].add(pin);else scopeSelected[scopeMode].delete(pin);if(scopeMode==='digital')await setPwmCapture(index,e.target.checked);drawInputScope()}));drawInputScope()}
+function drawInputScope(){const canvas=document.getElementById('inputScopePlot'),ctx=canvas.getContext('2d'),w=canvas.width,h=canvas.height,timeWindow=Number(document.getElementById('scopeTimebase').value);ctx.clearRect(0,0,w,h);ctx.font='16px system-ui';ctx.lineWidth=1;ctx.strokeStyle='#e7edf5';for(let j=0;j<=10;j++){const x=j*w/10;ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,h);ctx.stroke();ctx.fillStyle='#718096';ctx.fillText(`${(j*timeWindow/10).toFixed(timeWindow<1?2:1)} s`,x+5,h-8)}const selected=[...scopeSelected[scopeMode]],legend=[];if(scopeMode==='analog'){for(let j=0;j<=4;j++){const y=24+j*(h-52)/4;ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(w,y);ctx.stroke();ctx.fillStyle='#718096';ctx.fillText(String(Math.round(4095*(1-j/4))),5,y-5)}selected.forEach(pin=>{const channel=scopeCache?.channels?.find(c=>Number(c.pin)===pin),samples=channel?.samples||[];if(samples.length<2)return;const maxSamples=Math.max(2,Math.round(timeWindow*Number(scopeCache.sampleRateHzPerChannel||200))),visible=samples.slice(-maxSamples),color=scopeColors[adcPins.indexOf(pin)%scopeColors.length],padding=maxSamples-visible.length;ctx.strokeStyle=color;ctx.lineWidth=3;ctx.beginPath();visible.forEach((raw,j)=>{const x=(padding+j)*(w-1)/(maxSamples-1),y=24+(1-Number(raw)/4095)*(h-52);if(j===0)ctx.moveTo(x,y);else ctx.lineTo(x,y)});ctx.stroke();const lo=Math.min(...visible),hi=Math.max(...visible);legend.push(`<span><i style="background:${color}"></i>GPIO${pin} · ${visible[visible.length-1]} counts · range ${lo}–${hi}</span>`)})}else{const count=Math.max(1,selected.length),laneH=(h-54)/count;selected.forEach((pin,index)=>{const channel=pwmCache?.channels?.find(c=>Number(c.pin)===pin),color=scopeColors[pwmPins.indexOf(pin)%scopeColors.length],top=24+index*laneH;ctx.strokeStyle='#e7edf5';ctx.beginPath();ctx.moveTo(0,top+laneH);ctx.lineTo(w,top+laneH);ctx.stroke();ctx.fillStyle=color;ctx.fillText(`GPIO${pin}`,6,top+18);if(!channel?.valid){ctx.fillStyle='#718096';ctx.fillText('Waiting for PWM edges…',90,top+18);return}const freq=Number(channel.frequencyHz),duty=Math.max(0,Math.min(100,Number(channel.dutyPercent)))/100;ctx.strokeStyle=color;ctx.lineWidth=3;ctx.beginPath();for(let x=0;x<w;x++){const phase=((x/(w-1))*timeWindow*freq)%1,high=phase<duty,y=top+(high?laneH*.35:laneH*.8);if(x===0)ctx.moveTo(x,y);else ctx.lineTo(x,y)}ctx.stroke();legend.push(`<span><i style="background:${color}"></i>GPIO${pin} · ${freq.toFixed(2)} Hz · ${Number(channel.dutyPercent).toFixed(1)}% duty · reconstructed</span>`)})}document.getElementById('scopeLegend').innerHTML=legend.join('')||'Select one or more channels to display.';if(!selected.length){ctx.fillStyle='#64748b';ctx.fillText('Select one or more input pins above.',24,42)}}
+async function loadScope(){try{const r=await fetch('/api/scope',{credentials:'same-origin'});if(r.status===401)throw new Error('HTTP 401: sign in again as admin');if(!r.ok)throw new Error('HTTP '+r.status);scopeCache=await r.json();if(scopeMode==='analog'){document.getElementById('scopeStatus').textContent=`ADC1 · ${scopeCache.sampleRateHzPerChannel} frames/s per input · ${scopeCache.sampleCount}/${scopeCache.bufferCapacity} samples`;drawInputScope()}}catch(e){document.getElementById('scopeStatus').textContent='Scope read failed: '+e.message}}
+async function loadPwm(){const revisions=pwmRevision.slice();try{const r=await fetch('/api/pwm',{credentials:'same-origin'});if(r.status===401)throw new Error('HTTP 401: sign in again as admin');if(!r.ok)throw new Error('HTTP '+r.status);pwmCache=await r.json();if(scopeMode==='digital'){let added=false;pwmCache.channels.forEach(channel=>{const pin=Number(channel.pin);if(channel.enabled&&!pwmBusy[pwmPins.indexOf(pin)]&&revisions[pwmPins.indexOf(pin)]===pwmRevision[pwmPins.indexOf(pin)]&&!scopeSelected.digital.has(pin)){scopeSelected.digital.add(pin);added=true}});if(added)renderScopePicks();else drawInputScope()}}catch(e){document.getElementById('scopeStatus').textContent='PWM read failed: '+e.message}}
+async function setPwmCapture(i,enabled){
+  const revision=++pwmRevision[i];
+  pwmBusy[i]=true;
+  const request=pwmQueues[i].catch(()=>{}).then(async()=>{
+    const body=new URLSearchParams({channel:String(i),enabled:enabled?'1':'0'});
+    const r=await fetch('/api/pwm/config',{credentials:'same-origin',method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:body.toString()});
+    if(r.status===401)throw new Error('HTTP 401: sign in again as admin');
+    if(!r.ok)throw new Error('HTTP '+r.status);
+  });
+  pwmQueues[i]=request.catch(()=>{});
+  try{
+    await request;
+    if(revision===pwmRevision[i])document.getElementById('scopeStatus').textContent=enabled?`PWM capture enabled on GPIO${pwmPins[i]}`:`PWM capture disabled on GPIO${pwmPins[i]}`;
+  }catch(e){
+    if(revision===pwmRevision[i]){
+      if(enabled)scopeSelected.digital.delete(pwmPins[i]);
+      else scopeSelected.digital.add(pwmPins[i]);
+      renderScopePicks();
+      document.getElementById('scopeStatus').textContent='Capture failed: '+e.message;
+    }
+  }finally{if(revision===pwmRevision[i])pwmBusy[i]=false}
+}
+function showDeviceView(scope){clearInterval(scopePollTimer);clearInterval(pwmPollTimer);scopePollTimer=pwmPollTimer=null;document.getElementById('generatorView').hidden=scope;document.getElementById('scopeView').hidden=!scope;document.getElementById('generatorTab').classList.toggle('active',!scope);document.getElementById('scopeTab').classList.toggle('active',scope);if(scope){renderScopePicks();loadScope();loadPwm();scopePollTimer=setInterval(loadScope,250);pwmPollTimer=setInterval(loadPwm,500)}}
+document.getElementById('analogMode').addEventListener('click',()=>{scopeMode='analog';document.getElementById('analogMode').classList.add('active');document.getElementById('digitalMode').classList.remove('active');renderScopePicks();loadScope()});document.getElementById('digitalMode').addEventListener('click',()=>{scopeMode='digital';document.getElementById('digitalMode').classList.add('active');document.getElementById('analogMode').classList.remove('active');renderScopePicks();loadPwm()});
+document.getElementById('scopeTimebase').addEventListener('change',drawInputScope);
+document.getElementById('generatorTab').addEventListener('click',()=>showDeviceView(false));document.getElementById('scopeTab').addEventListener('click',()=>showDeviceView(true));
 document.getElementById('dcPreset').addEventListener('click',()=>{channels[0]={...channels[0],waveform:'dc',amplitude:0,offset:50};channels[1]={...channels[1],waveform:'dc',amplitude:0,offset:25};channels.forEach((c,i)=>{document.getElementById(`amp${i}`).value=c.amplitude;document.getElementById(`offset${i}`).value=c.offset;document.getElementById(`enable${i}`).checked=c.enabled;changed(i,true,['waveform','amplitude','offset'])})});
 let lastPreviewFrame=null;
 function animatePreview(timestamp){
@@ -86,7 +141,7 @@ function animatePreview(timestamp){
   if(elapsed>=1/30){
     channels.forEach((c,i)=>{
       if(c.enabled&&c.waveform!=='dc')previewPhase[i]=(previewPhase[i]+elapsed*c.frequency)%1;
-      draw(i);
+      if(!document.getElementById('generatorView').hidden)draw(i);
     });
     lastPreviewFrame=timestamp;
   }
