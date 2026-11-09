@@ -1,0 +1,101 @@
+#pragma once
+#include <Arduino.h>
+
+static const char INDEX_HTML[] PROGMEM = R"WAVEGENHTML(
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#f4f7fb">
+  <title>ESP32 Wave Generator</title>
+  <style>
+    :root{font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;color:#162238;background:#f4f7fb;font-synthesis:none}
+    *{box-sizing:border-box}body{margin:0;min-width:320px}.wrap{max-width:1050px;margin:auto;padding:28px 18px 48px}
+    header{display:flex;justify-content:space-between;align-items:center;gap:20px;margin:0 0 24px}
+    h1{font-size:clamp(1.5rem,4vw,2.2rem);margin:0;letter-spacing:-.04em}.sub{color:#607089;margin:7px 0 0;font-size:.95rem}
+    .badge{display:flex;align-items:center;gap:8px;padding:9px 12px;border:1px solid #dce4ef;border-radius:999px;background:#fff;color:#53637b;font-size:.82rem;white-space:nowrap}
+    .dot{width:9px;height:9px;border-radius:50%;background:#d39135}.dot.online{background:#27a776;box-shadow:0 0 0 4px #e4f6ef}
+    .notice{padding:12px 15px;background:#fff8e8;border:1px solid #f4dfb5;border-radius:12px;color:#755721;font-size:.9rem;line-height:1.5;margin-bottom:18px}
+    .grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px}.card{background:white;border:1px solid #e0e7f0;border-radius:18px;padding:18px;box-shadow:0 8px 26px #1a315008}
+    .cardhead{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}.cardhead h2{margin:0;font-size:1.13rem}.pin{font-size:.8rem;color:#61718a;background:#f0f4f9;border-radius:7px;padding:5px 8px}
+    canvas{display:block;width:100%;height:150px;border:1px solid #e5ebf3;border-radius:12px;background:linear-gradient(#fff,#fbfdff)}
+    .controls{display:grid;grid-template-columns:1fr 1fr;gap:14px 16px;margin-top:16px}.field label{display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:.84rem;font-weight:600;color:#45556d;margin-bottom:7px}.value{font-variant-numeric:tabular-nums;color:#17253c;font-weight:700}
+    select{width:100%;height:40px;border:1px solid #cfd8e5;border-radius:9px;padding:0 10px;background:#fff;color:#18263c;font:inherit}
+    input[type=range]{width:100%;accent-color:#426de0;margin:7px 0 0}.rangeends{display:flex;justify-content:space-between;color:#8a98aa;font-size:.72rem;margin-top:2px}
+    .toggle{display:flex;align-items:center;gap:9px;font-size:.84rem;font-weight:600;color:#45556d}.toggle input{width:18px;height:18px;accent-color:#258e68}.presetbar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:0 0 18px}.presetbar button{border:0;border-radius:9px;padding:10px 14px;background:#263b61;color:white;font:600 .88rem system-ui;cursor:pointer}.presetbar button:hover{background:#345181}.presetbar span{font-size:.82rem;color:#687890}input:disabled{opacity:.45;cursor:not-allowed}.wave-buttons{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px}.wavebtn{border:1px solid #cfd8e5;border-radius:8px;padding:9px 6px;background:#fff;color:#43536b;font:600 .78rem system-ui;cursor:pointer}.wavebtn.active{background:#426de0;border-color:#426de0;color:#fff}.field.wide{grid-column:1/-1}
+    .fault-actions{display:flex;gap:8px;align-items:center;margin-top:8px}.fault-actions input{width:92px;height:38px;border:1px solid #cfd8e5;border-radius:8px;padding:0 8px}.fault-actions button{border:0;border-radius:8px;padding:10px 12px;background:#a34c37;color:white;font:600 .82rem system-ui;cursor:pointer}.fault-status{font-size:.78rem;color:#687890;margin-top:6px;min-height:1em}.eventlog{margin-top:18px}.eventlog ol{padding-left:22px;margin-bottom:0;color:#52627a;font-size:.82rem;line-height:1.8}.eventlog li{font-variant-numeric:tabular-nums}
+    .foot{margin-top:18px;color:#687890;font-size:.82rem;line-height:1.55}.foot strong{color:#465770}
+    @media(max-width:720px){header{align-items:flex-start;flex-direction:column}.grid{grid-template-columns:1fr}.controls{gap:12px}}
+  </style>
+</head>
+<body>
+  <main class="wrap">
+    <header>
+      <div><h1>ESP32 Wave Generator</h1><p class="sub">Two independently controlled DAC outputs, including a synthetic PPG pulse.</p></div>
+      <div class="badge"><span class="dot" id="connectionDot"></span><span id="connectionText">Connecting…</span><span id="firmwareBuild"></span></div>
+    </header>
+    <div class="notice"><strong>DAC outputs:</strong> Pin numbers depend on the selected PlatformIO board target and are shown on each channel card. Output is unipolar and nominally 0–3.3 V. The built-in DAC is 8-bit and is for low-frequency signal testing, not a calibrated instrument output.</div>
+    <div class="presetbar"><button id="dcPreset" type="button">Load DC midpoint test</button><span>DAC1 = 128/255; DAC2 = 64/255 · enable each channel below</span></div>
+    <section class="grid" id="channels"></section>
+    <section class="card eventlog"><h2>Fault event log</h2><ol id="eventLog"><li>No fault events yet.</li></ol><p class="sub">Times are elapsed since device boot; the log is kept in RAM and clears after reboot.</p></section>
+    <p class="foot"><strong>Wiring:</strong> connect the DAC pins shown on the channel cards to high-impedance ADC inputs on the receiving board, and connect both boards’ GND pins together. Do not connect the output to equipment that expects negative voltage, voltage above 3.3 V, or a low-impedance load. USB Serial commands: `ch1` or `ch2` selects a channel, then `a0`–`a5` selects its waveform.</p>
+  </main>
+<script>
+const channelDefaults=[
+  {name:'Channel 1',pin:0,waveform:'ppg',frequency:1.2,amplitude:90,offset:50,enabled:false},
+  {name:'Channel 2',pin:0,waveform:'ppg',frequency:1.2,amplitude:45,offset:50,enabled:false}
+];
+let channels=channelDefaults.map(c=>({...c}));
+let pendingUpdates=[false,false],channelRevision=[0,0];
+const shapes=['sine','square','triangle','sawtooth','ppg','dc'];
+const shapeLabel={sine:'Sine',square:'Square',triangle:'Triangle',sawtooth:'Sawtooth',ppg:'PPG pulse',dc:'DC level'};
+const commandWave={a0:'sine',a1:'square',a2:'triangle',a3:'sawtooth',a4:'ppg',a5:'dc'};
+const card=(c,i)=>`<article class="card" data-channel="${i}">
+  <div class="cardhead"><h2>${c.name}</h2><span class="pin" id="pinLabel${i}">Loading pin…</span></div>
+  <canvas id="plot${i}" width="700" height="220" aria-label="${c.name} waveform preview"></canvas>
+  <div class="controls">
+    <div class="field wide"><label>Choose waveform · command IDs</label><div class="wave-buttons">${shapes.map((s,j)=>`<button type="button" class="wavebtn" data-command="a${j}">a${j} · ${shapeLabel[s]}</button>`).join('')}</div></div>
+    <div class="field"><label for="freq${i}">Frequency <span class="value"><span id="freqv${i}">${c.frequency.toFixed(1)}</span> Hz <span id="bpm${i}"></span></span></label><input id="freq${i}" type="range" min="0.5" max="10" step="0.1" value="${c.frequency}"><div class="rangeends"><span>0.5 Hz</span><span>10 Hz</span></div></div>
+    <div class="field"><label for="amp${i}">Amplitude <span class="value"><span id="ampv${i}">${c.amplitude}</span>% Vpp</span></label><input id="amp${i}" type="range" min="0" max="100" step="1" value="${c.amplitude}"><div class="rangeends"><span>0% Vpp</span><span>100% Vpp</span></div><div class="fault-status" id="amplitudeHint${i}"></div></div>
+    <div class="field"><label for="offset${i}">Offset <span class="value"><span id="offsetv${i}">${c.offset}</span>%</span></label><input id="offset${i}" type="range" min="0" max="100" step="1" value="${c.offset}"><div class="rangeends"><span>0 V</span><span>~3.3 V</span></div></div>
+    <label class="toggle"><input id="enable${i}" type="checkbox" ${c.enabled?'checked':''}> Output enabled</label><div class="fault-status" id="channelStatus${i}" role="status" aria-live="polite"></div><div class="fault-status" id="signalDiag${i}" aria-live="polite">Waiting for timer diagnostics…</div>
+    <div class="field wide"><label for="fault${i}">Timed fault scenario</label><select id="fault${i}"><option value="none">Stop fault</option><option value="missing_pulse">Miss every 3rd PPG pulse</option><option value="reduced_amplitude">Reduce amplitude by 50%</option><option value="baseline_shift">Shift baseline upward by 10%</option><option value="dropout">Drop output to 0 V</option></select><div class="fault-actions"><input id="faultDuration${i}" type="number" min="1" max="600" value="10" aria-label="Fault duration in seconds"><span>seconds</span><button type="button" id="faultStart${i}">Start scenario</button></div><div class="fault-status" id="faultStatus${i}"></div></div>
+  </div>
+</article>`;
+document.getElementById('channels').innerHTML=channels.map(card).join('');
+function gaussian(x,c,w){const z=(x-c)/w;return Math.exp(-.5*z*z)}
+function normWave(shape,p){if(shape==='dc')return .5;if(shape==='square')return p<.5?1:0;if(shape==='triangle')return 1-Math.abs(2*p-1);if(shape==='sawtooth')return p;if(shape==='ppg'){const pulse=Math.max(0,gaussian(p,.18,.065)+.18*gaussian(p,.43,.025)-.07*gaussian(p,.48,.03));return .05+.95*Math.min(1,pulse)}return .5+.5*Math.sin(2*Math.PI*p)}
+const previewWindowSeconds=2,previewPhase=[0,0];
+function draw(i){const c=channels[i],canvas=document.getElementById(`plot${i}`),ctx=canvas.getContext('2d'),w=canvas.width,h=canvas.height;ctx.clearRect(0,0,w,h);ctx.strokeStyle='#e7edf5';ctx.lineWidth=1;for(let y=30;y<h;y+=40){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(w,y);ctx.stroke()}ctx.strokeStyle=c.enabled?'#426de0':'#aab5c4';ctx.lineWidth=3;ctx.beginPath();for(let x=0;x<w;x++){const p=(previewPhase[i]+x/w*previewWindowSeconds*c.frequency)%1,rawV=c.offset/100+(normWave(c.waveform,p)-.5)*(c.amplitude/100),v=c.enabled?Math.max(0,Math.min(1,rawV)):0;const y=(1-v)*h*.72+h*.14;if(x===0)ctx.moveTo(x,y);else ctx.lineTo(x,y)}ctx.stroke();ctx.fillStyle='#64748b';ctx.font='14px system-ui';const label=c.waveform==='dc'?'DC level':c.waveform==='ppg'?`${c.frequency.toFixed(1)} Hz · ${Math.round(c.frequency*60)} bpm · synthetic PPG`:`${c.frequency.toFixed(1)} Hz · ${shapeLabel[c.waveform]}`;ctx.fillText(c.enabled?label:'Output off',12,20);ctx.font='12px system-ui';ctx.fillText('Simulated preview · 2 s window',12,h-8)}
+function render(i){const c=channels[i],dc=c.waveform==='dc';document.getElementById(`freq${i}`).disabled=dc;document.getElementById(`amp${i}`).disabled=dc;document.getElementById(`freqv${i}`).textContent=dc?'—':c.frequency.toFixed(1);document.getElementById(`ampv${i}`).textContent=dc?'—':Math.round(c.amplitude);document.getElementById(`amplitudeHint${i}`).textContent=!dc&&c.amplitude===0?'0% amplitude: this waveform will be flat':'';document.getElementById(`offsetv${i}`).textContent=Math.round(c.offset);document.getElementById(`bpm${i}`).textContent=c.waveform==='ppg'?`(${Math.round(c.frequency*60)} bpm)`:'';document.querySelectorAll(`[data-channel="${i}"] .wavebtn`).forEach(b=>b.classList.toggle('active',commandWave[b.dataset.command]===c.waveform));draw(i)}
+let timers=[],requestQueues=[Promise.resolve(),Promise.resolve()],dirtyFields=[new Set(),new Set()],previousTimerTicks=null;
+const waveformCommand={sine:'a0',square:'a1',triangle:'a2',sawtooth:'a3',ppg:'a4',dc:'a5'};
+async function send(i,fields){const c={...channels[i]},revision=channelRevision[i],params=new URLSearchParams({channel:String(i)});fields.forEach(field=>{if(field==='waveform')params.set('command',waveformCommand[c.waveform]);else if(field==='frequency')params.set(field,c.frequency.toFixed(1));else if(field==='amplitude')params.set(field,String(Math.round(c.amplitude)));else if(field==='offset')params.set(field,String(Math.round(c.offset)));else if(field==='enabled')params.set(field,c.enabled?'1':'0')});pendingUpdates[i]=true;const request=requestQueues[i].catch(()=>{}).then(async()=>{const r=await fetch('/api/channel',{credentials:'same-origin',method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:params.toString()});const data=await r.json().catch(()=>({}));if(!r.ok)throw new Error(r.status===401?'HTTP 401: web login rejected; reload and sign in as admin.':(data.error||('HTTP '+r.status)));if(data.channel!==i)throw new Error('ESP32 replied for the wrong channel');for(const field of fields){if(field==='waveform'&&data.waveform!==c.waveform)throw new Error('Waveform was not applied');if(field==='frequency'&&Math.abs(Number(data.frequency)-Number(c.frequency.toFixed(1)))>0.051)throw new Error('Frequency was not applied');if(field==='amplitude'&&Number(data.amplitude)!==Math.round(c.amplitude))throw new Error('Amplitude was not applied');if(field==='offset'&&Number(data.offset)!==Math.round(c.offset))throw new Error('Offset was not applied');if(field==='enabled'&&data.enabled!==c.enabled)throw new Error('Output enable was not applied')}return data});requestQueues[i]=request.then(()=>undefined,()=>undefined);try{await request;if(revision===channelRevision[i]){pendingUpdates[i]=false;document.getElementById(`channelStatus${i}`).textContent='Settings applied'}}catch(e){if(revision===channelRevision[i]){pendingUpdates[i]=false;document.getElementById(`channelStatus${i}`).textContent='Update failed: '+e.message}setOnline(false)}}
+function changed(i,immediate=false,fields=[]){channelRevision[i]++;fields.forEach(field=>dirtyFields[i].add(field));pendingUpdates[i]=true;render(i);clearTimeout(timers[i]);const flush=()=>{const batch=[...dirtyFields[i]];dirtyFields[i].clear();send(i,batch)};if(immediate)flush();else timers[i]=setTimeout(flush,140)}
+channels.forEach((_,i)=>{document.querySelectorAll(`[data-channel="${i}"] .wavebtn`).forEach(button=>button.addEventListener('click',()=>{channels[i].waveform=commandWave[button.dataset.command];changed(i,true,['waveform'])}));document.getElementById(`freq${i}`).addEventListener('input',e=>{channels[i].frequency=Number(e.target.value);changed(i,false,['frequency'])});document.getElementById(`amp${i}`).addEventListener('input',e=>{channels[i].amplitude=Number(e.target.value);changed(i,false,['amplitude'])});document.getElementById(`offset${i}`).addEventListener('input',e=>{channels[i].offset=Number(e.target.value);changed(i,false,['offset'])});document.getElementById(`enable${i}`).addEventListener('change',e=>{channels[i].enabled=e.target.checked;changed(i,true,['enabled'])});document.getElementById(`faultStart${i}`).addEventListener('click',()=>sendFault(i));render(i)});
+async function sendFault(i){const mode=document.getElementById(`fault${i}`).value,duration=document.getElementById(`faultDuration${i}`).value,params=new URLSearchParams({channel:String(i),mode,duration});try{const r=await fetch('/api/fault',{credentials:'same-origin',method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:params.toString()});const data=await r.json();if(!r.ok)throw new Error(r.status===401?'HTTP 401: web login rejected; reload and sign in as admin.':(data.error||('HTTP '+r.status)));document.getElementById(`faultStatus${i}`).textContent=mode==='none'?'Fault stopped.':'Scenario started.';setOnline(true);loadEvents()}catch(e){document.getElementById(`faultStatus${i}`).textContent='Scenario failed: '+e.message;setOnline(false)}}
+async function loadEvents(){try{const r=await fetch('/api/events',{credentials:'same-origin'});if(r.status===401){document.getElementById('eventLog').innerHTML='<li>Web login rejected; reload and sign in.</li>';return}if(!r.ok)throw new Error();const data=await r.json(),list=document.getElementById('eventLog');if(!data.events.length){list.innerHTML='<li>No fault events yet.</li>';return}list.innerHTML=data.events.slice().reverse().map(e=>`<li>+${(e.uptimeMs/1000).toFixed(1)} s · Channel ${e.channel} · ${e.scenario.replaceAll('_',' ')} · ${e.action}</li>`).join('')}catch(e){}}
+function setOnline(online){document.getElementById('connectionDot').classList.toggle('online',online);document.getElementById('connectionText').textContent=online?'ESP32 connected':'Connection lost'}
+async function loadState(){const requestRevisions=channelRevision.slice();try{const r=await fetch('/api/state',{credentials:'same-origin'});if(r.status===401){document.getElementById('firmwareBuild').textContent='· web login rejected (401)';document.querySelectorAll('[id^=signalDiag]').forEach(el=>el.textContent='API authentication failed; reload the page and sign in as admin');setOnline(false);return}if(!r.ok)throw new Error('HTTP '+r.status);const state=await r.json();document.getElementById('firmwareBuild').textContent=state.firmware?'· '+state.firmware:'· firmware ID missing';const hadPriorTicks=previousTimerTicks!==null,timerAdvancing=hadPriorTicks&&Number(state.timerTicks)!==previousTimerTicks;previousTimerTicks=Number(state.timerTicks);state.channels.forEach((s,i)=>{document.getElementById(`pinLabel${i}`).textContent=`GPIO${state.pins[i]} · DAC`;if(pendingUpdates[i]||requestRevisions[i]!==channelRevision[i])return;channels[i]={...channels[i],...s,pin:state.pins[i]};document.getElementById(`freq${i}`).value=channels[i].frequency;document.getElementById(`amp${i}`).value=channels[i].amplitude;document.getElementById(`offset${i}`).value=channels[i].offset;document.getElementById(`enable${i}`).checked=channels[i].enabled;const diag=document.getElementById(`signalDiag${i}`);if(typeof state.timerRunning!=='boolean'||typeof state.timerTicks!=='number')diag.textContent='Firmware is missing signal diagnostics; upload the latest build';else if(!state.timerRunning)diag.textContent='DAC sample timer did not start';else if(!hadPriorTicks)diag.textContent='Timer started; checking activity…';else if(!timerAdvancing)diag.textContent='Timer is not advancing';else if(!s.enabled)diag.textContent='Timer running; output disabled (DAC code 0)';else if(s.waveform!=='dc'&&Number(s.amplitude)===0)diag.textContent='Timer running; amplitude is 0%, so this waveform is flat';else diag.textContent=`Timer running · GPIO${state.pins[i]} · latest DAC code ${state.dacCodes[i]}/255`;render(i)});setOnline(true)}catch(e){setOnline(false)}}
+document.getElementById('dcPreset').addEventListener('click',()=>{channels[0]={...channels[0],waveform:'dc',amplitude:0,offset:50};channels[1]={...channels[1],waveform:'dc',amplitude:0,offset:25};channels.forEach((c,i)=>{document.getElementById(`amp${i}`).value=c.amplitude;document.getElementById(`offset${i}`).value=c.offset;document.getElementById(`enable${i}`).checked=c.enabled;changed(i,true,['waveform','amplitude','offset'])})});
+let lastPreviewFrame=null;
+function animatePreview(timestamp){
+  if(lastPreviewFrame===null)lastPreviewFrame=timestamp;
+  const elapsed=(timestamp-lastPreviewFrame)/1000;
+  if(elapsed>=1/30){
+    channels.forEach((c,i)=>{
+      if(c.enabled&&c.waveform!=='dc')previewPhase[i]=(previewPhase[i]+elapsed*c.frequency)%1;
+      draw(i);
+    });
+    lastPreviewFrame=timestamp;
+  }
+  requestAnimationFrame(animatePreview);
+}
+requestAnimationFrame(animatePreview);
+loadState();loadEvents();setInterval(loadState,5000);setInterval(loadEvents,2000);
+</script>
+</body>
+</html>
+)WAVEGENHTML";
+

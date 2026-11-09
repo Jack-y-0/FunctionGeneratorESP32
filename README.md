@@ -1,13 +1,17 @@
+
+<img width="803" height="890" alt="Screenshot 2026-11-08 at 00 28 12" src="https://github.com/user-attachments/assets/d389e689-68d3-4dfb-b60f-30eee0b7d29a" />
+
 # FunctionGeneratorESP32
 
-Uses the DAC outputs on an ESP32 to make a waveform similar to a PPG sensor.  
-Analog Output in GPIO25.  
-The onboard LED is on GPIO2 and is PWM modulated for a similar effect for the user.  
 
-<img width="824" height="646" alt="image" src="https://github.com/user-attachments/assets/add5d9ad-cf85-42c7-88f9-86aaa4b4aa68" />  
+- `functiongenerator_web/` — the two-channel web-controlled generator. Use this PlatformIO project for the webpage and independent channel controls.
 
-User can press and hold the BOOT button to pause the waveform update.  
-<img width="824" height="646" alt="image" src="https://github.com/user-attachments/assets/f2217349-7e44-4ea8-b7af-c8f74206d137" />
+## Web-controlled generator
 
+The web firmware supports sine, square, triangle, sawtooth, synthetic PPG, and DC outputs. Channel 1 and Channel 2 have independent waveform, frequency, amplitude, offset, and enable settings. Both outputs start disabled after boot; enable each output on its webpage card.
 
+The default PlatformIO target is `esp32dev` for the classic ESP32 DevKit. Its DAC pins are GPIO25 and GPIO26. The S2 target uses GPIO17 and GPIO18. The webpage displays the selected target's pin mapping. See [`functiongenerator_web/README.md`](functiongenerator_web/README.md) for setup, credentials, wiring, and diagnostics.
 
+## Uploading
+
+Upload only `functiongenerator_web/` to run the web interface. The standalone `.ino` projects each have their own `setup()` and `loop()` and are not compiled together with the web firmware. The BOOT-button pause behavior belongs to the original standalone sketch; web outputs are controlled independently from the webpage.
