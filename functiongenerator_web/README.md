@@ -1,47 +1,106 @@
-# Web-Controlled Function Generator and Scope — Classic ESP32
+# ESP32 Function Generator and Scope
 
-This feature branch targets the classic ESP32 DevKit (`esp32dev`) selected for the project. It combines the existing two-channel DAC waveform generator with six analog ADC scope inputs and 17 configurable digital PWM edge-capture inputs. Channel 1 and Channel 2 output controls remain independent; both outputs start disabled after reboot.
+Browser-controlled waveform generator and input scope for the **classic ESP32 DevKit** (`esp32dev`). Includes two independent DAC outputs, six analog inputs, and 17 selectable PWM capture inputs. Both outputs start disabled after every reboot.
 
-## Scope capacity
+## Requirements
 
-- **Analog:** GPIO32, 33, 34, 35, 36, and 39 (six exposed ADC1 inputs on the common ESP32-WROOM DevKit). Samples are read in sequence at about 200 frames/s per input and displayed as raw 12-bit counts.
-- **Digital PWM:** GPIO4, 13, 14, 16, 17, 18, 19, 21, 22, 23, 27, 32, 33, 34, 35, 36, and 39. The page lets you select one or more pins for capture and overlays their reconstructed pulse traces on a shared full-width display; frequency and duty cycle are reported in the legend. Analog and digital inputs are selected in separate modes.
+- Classic ESP32 DevKit and a USB data cable.
+- [Visual Studio Code](https://code.visualstudio.com/) with the official [PlatformIO IDE extension](https://marketplace.visualstudio.com/items?itemName=platformio.platformio-ide).
+- A 2.4 GHz Wi-Fi network and a phone or computer with a browser.
+- Node.js only for running the browser-logic regression tests.
 
-The analog ADC channels are multiplexed, not simultaneous. ADC2 is not included because the webpage uses Wi-Fi. PWM edge capture is for low-frequency signal checks, not a high-speed logic analyzer.
+PlatformIO IDE includes its own command-line tools; a separate PlatformIO installation is unnecessary. See the [official VS Code setup guide](https://docs.platformio.org/en/latest/integration/ide/vscode.html).
 
-## Electrical limits
+## Set Up in VS Code
 
-Never apply a negative voltage or more than 3.3 V to an ESP32 input; GPIOs are not 5 V tolerant. At the configured ADC attenuation, full scale may be around 3.1 V and varies by chip. ADC results are uncalibrated. Use an appropriately protected attenuator/buffer for external signals and verify actual values with a scope or meter.
+1. Install VS Code, then open **Extensions** and install **PlatformIO IDE** (`platformio.platformio-ide`). Allow its initial setup to finish and reload VS Code if prompted.
+2. Select **File > Open Folder** and open `functiongenerator_web`, the folder containing `platformio.ini`. Open the existing project; there is no need to create a new one.
+3. Connect the ESP32 using a USB data cable. PlatformIO downloads the configured platform, framework, and WiFiManager library when needed.
+4. Open the **PlatformIO** sidebar. Under **PROJECT TASKS > esp32dev > General**, select **Build** and wait for `SUCCESS`.
+5. Select **Upload** in the same task group and wait for `SUCCESS`.
+6. Select **Monitor** to open Serial Monitor. This project sets its speed to **115200 baud**. Press the board's **EN/RESET** button if you missed the startup messages.
 
-## Upload
+The PlatformIO status-bar buttons also provide Build, Upload, and Serial Monitor actions. Hover over a button to see its name.
+
+## Connect Wi-Fi and Open the Webpage
+
+1. On first startup, or if the saved network cannot be reached, connect your phone or computer to **ESP32_MUXSIGSIM**. This setup network has **no password**. Stay connected if your device reports that it has no internet access.
+2. Open the WiFiManager portal when prompted. If it does not open automatically, visit [http://192.168.4.1](http://192.168.4.1).
+3. Choose your 2.4 GHz router network, enter **the router's Wi-Fi password** if required, and save. The setup portal times out after three minutes; the ESP32 then restarts so you can try again.
+4. Reconnect your phone or computer to the same router network as the ESP32.
+5. In VS Code's Serial Monitor, find `Connected to Wi-Fi. Open http://` followed by the device IP address. Open that address in your browser.
+
+The webpage and API require **no username or password**. Anyone on the connected network can access the controls. Saved Wi-Fi credentials are reused on later boots, so the setup network normally disappears after connection.
+
+## Use the Controls
+
+### Wave Generator
+
+Each DAC channel has independent waveform, frequency, amplitude, offset, and output-enable controls. Choose sine, square, triangle, sawtooth, PPG, or DC. The waveform frequency range is **0.5-10 Hz**.
+
+Enable the desired output explicitly. Waveform settings are saved, but the enabled state is never restored after a reboot. The animated graph is a **simulated preview over a two-second window**, not a measurement of the physical output. Disabled outputs show a flat trace.
+
+### Oscilloscope Inputs
+
+Select analog or digital PWM mode, then choose the input pins to display. Analog traces share a graph; PWM traces are reconstructed from captured edge timing, with frequency and duty-cycle readings.
+
+| Function | GPIO pins | Notes |
+| --- | --- | --- |
+| DAC channel 1 | 25 | Built-in 8-bit DAC |
+| DAC channel 2 | 26 | Built-in 8-bit DAC |
+| Analog scope | 32, 33, 34, 35, 36, 39 | ADC1, raw 12-bit counts |
+| Digital PWM capture | 4, 13, 14, 16, 17, 18, 19, 21, 22, 23, 27, 32, 33, 34, 35, 36, 39 | Digital inputs, not PWM outputs |
+
+Analog inputs are sampled sequentially at about **200 frames/s per input**, with a **1.28-second buffer**. ADC2 is excluded because Wi-Fi is active. PWM capture is intended for low-frequency checks, not high-speed logic analysis.
+
+## Electrical Limits
+
+- Connect signal ground to ESP32 **GND**.
+- Never apply a negative voltage or more than **3.3 V** to an input. ESP32 GPIOs are **not 5 V tolerant**.
+- ADC readings are uncalibrated; full scale at the configured attenuation may be around 3.1 V and varies by chip.
+- Use suitable input protection and buffering for external signals. Verify physical outputs with a scope or meter; the built-in DAC is uncalibrated.
+
+See the [bench verification guide](docs/bench_verification_and_output_interface.md) for output measurements and interface considerations, and the [safety gap assessment](docs/Safety%20Gap%20assesment.md) for proposed standards and outstanding hardware work. These documents do not establish standards conformity.
+
+## Terminal Commands
+
+Open **PlatformIO Core CLI** from the PlatformIO sidebar and run these commands from `functiongenerator_web`:
 
 ```sh
+# Compile firmware
 pio run -e esp32dev
+
+# Upload firmware to the connected board
 pio run -e esp32dev -t upload
+
+# Open Serial Monitor; Ctrl+C closes it
+pio device monitor -b 115200
 ```
 
-Wi-Fi setup uses the open `ESP32_MUXSIGSIM` network: no password is required to join it or access the WiFiManager portal. Select your router in the portal and enter its Wi-Fi password if required. After connection, open the device IP printed to Serial Monitor at 115200 baud; the webpage and API require no login. Anyone on the connected network can access the controls.
+The webpage is embedded in the firmware. Changes to `include/wavegen_page.h` require rebuilding and uploading; no separate web server is needed.
 
-The **Wave generator** view uses one card per DAC output, with an individual waveform preview and independent waveform, frequency, amplitude, offset, and output-enable controls. The **Oscilloscope inputs** view uses a full-width graph with selectable ADC or PWM channels; selected ADC traces share one graph, and selected PWM traces use separate lanes within one graph. This input-scope layout does not change the DAC generator controls. The ADC time window is limited to the 1.28-second sample buffer; the PWM trace is reconstructed from measured edge timing. The generator preview animates over a fixed 2-second window while output is enabled. Disabled outputs show a flat trace; the graph is labeled as a simulated preview and does not measure the DAC output.
+## Troubleshooting
 
-## Debug verification
+| Problem | What to check |
+| --- | --- |
+| `pio` is not found | Use PlatformIO Core CLI inside VS Code, where the extension's tools are available. |
+| Board or serial port is missing | Try a known USB data cable and another USB port. Check whether your board's USB-to-serial chip requires a driver. |
+| Upload reports that the port is busy | Close Serial Monitor and any other program using the board, then retry Upload. |
+| Upload stays at `Connecting...` | Hold BOOT while connecting starts; release it when writing begins. |
+| Setup network is missing | Check Serial Monitor: the ESP32 may already be connected to its saved Wi-Fi network. |
+| Portal does not open | Stay connected to ESP32_MUXSIGSIM and open http://192.168.4.1 before the three-minute timeout. |
+| Device webpage cannot be reached | Use the IP from the latest startup log and connect to the same router network. Guest-network or client isolation can block access. |
+| Password prompt still appears | Upload the latest firmware, verify you are opening this ESP32's IP, and reload the page. |
+| Output is flat | Enable the channel and check amplitude and waveform settings. DC and zero-amplitude signals are flat. Verify the actual DAC pin separately. |
 
-Run the browser-logic regression checks without connecting a board:
+## Developer Checks
+
+Main files: `src/main.cpp` contains the firmware, `include/wavegen_page.h` contains the embedded webpage, and `platformio.ini` defines the board and dependencies.
+
+With Node.js installed, run:
 
 ```sh
 node --test tests/web_regression.cjs
 ```
 
-These checks cover generator controls after state replacement, preview frequency and animation, stale PWM polling, and ordered PWM configuration requests. They use a mocked page/API and do not verify rendered browser layout or physical signal accuracy.
-
-## Version history
-
-| Date (Asia/Beirut) | Revision | Changes |
-|---|---|---|
-| 2026-11-08 | This debug revision | Restore current-state generator controls and animated frequency-dependent preview; serialize PWM configuration and reject stale selection updates; correct ADC zero label; add four regression checks. |
-| 2026-11-08 | `e03a067` | Restore per-channel generator layout. |
-| 2026-11-08 | `450c363` | Separate hardware and software work in the [Safety Gap assesment](docs/Safety%20Gap%20assesment.md). |
-| 2026-11-08 | `194a978` | Document version history and proposed instrument standards. |
-| 2026-11-08 | `75c28a1` | Earlier generator control and animated-preview fixes, subsequently regressed during layout changes. |
-
-Entries are selected Git milestones, not numbered releases. Proposed standards remain awaiting approval.
+The four regression tests cover generator controls, preview frequency and animation, stale PWM polling, and ordered PWM configuration requests. They use a mocked page/API and do not verify browser layout or physical signal accuracy. Use `git log --oneline` for revision history.
