@@ -14,7 +14,9 @@
 
 // Pin selection follows the PlatformIO target: classic ESP32 uses GPIO25/26;
 // ESP32-S2 uses GPIO17/18 for its built-in DAC channels.
-static constexpr const char *FIRMWARE_BUILD_ID = "scope-pwm-2026-11-08";
+static constexpr const char *FIRMWARE_BUILD_ID = "0.0.7";
+static constexpr const char *PROGRAM_NAME = "FunctionGeneratorESP32";
+static constexpr const char *COMPILED_AT = __DATE__ " " __TIME__;
 #if defined(CONFIG_IDF_TARGET_ESP32S2)
 static constexpr const char *BOARD_TARGET_NAME = "ESP32-S2";
 static constexpr uint8_t DAC_PINS[2] = {17, 18};
@@ -372,6 +374,27 @@ static void handlePwmConfig() {
   }
   server.send(200, "application/json", "{\"ok\":true}");
 }
+// Wi-Fi SSIDs may contain quotes, backslashes, and JSON control characters.
+static String jsonString(const String &value) {
+  static const char hex[] = "0123456789abcdef";
+  String result = "\"";
+  for (size_t i = 0; i < value.length(); ++i) {
+    const uint8_t ch = static_cast<uint8_t>(value[i]);
+    if (ch == '"' || ch == '\\') {
+      result += '\\';
+      result += static_cast<char>(ch);
+    } else if (ch < 0x20) {
+      result += "\\u00";
+      result += hex[ch >> 4];
+      result += hex[ch & 0x0f];
+    } else {
+      result += static_cast<char>(ch);
+    }
+  }
+  result += '"';
+  return result;
+}
+
 static void handleState() {
   ChannelConfig local[2];
   portENTER_CRITICAL(&configMux);
@@ -380,8 +403,14 @@ static void handleState() {
   const uint32_t localSampleTicks = sampleTicks;
   portEXIT_CRITICAL(&configMux);
 
-  String json = "{\"firmware\":\"" + String(FIRMWARE_BUILD_ID) +
-                "\",\"timerRunning\":" + String(sampleTimerStarted ? "true" : "false") +
+  const bool wifiConnected = WiFi.status() == WL_CONNECTED;
+  String json = "{\"firmware\":" + jsonString(FIRMWARE_BUILD_ID) +
+                ",\"programName\":" + jsonString(PROGRAM_NAME) +
+                ",\"compiledAt\":" + jsonString(COMPILED_AT) +
+                ",\"macAddress\":" + jsonString(WiFi.macAddress()) +
+                ",\"wifiConnected\":" + String(wifiConnected ? "true" : "false") +
+                ",\"wifiSsid\":" + jsonString(wifiConnected ? WiFi.SSID() : String("")) +
+                ",\"timerRunning\":" + String(sampleTimerStarted ? "true" : "false") +
                 ",\"timerTicks\":" + String(localSampleTicks) +
                 ",\"sampleRateHz\":" + String(SAMPLE_RATE_HZ) +
                 ",\"pins\":[" + String(DAC_PINS[0]) + "," + String(DAC_PINS[1]) +
@@ -713,4 +742,5 @@ void loop() {
   serviceFaultTimers();
   delay(1);
 }
+
 

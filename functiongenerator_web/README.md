@@ -32,6 +32,23 @@ node --test tests/web_regression.cjs
 
 These checks cover generator controls after state replacement, preview frequency and animation, stale PWM polling, and ordered PWM configuration requests. They use a mocked page/API and do not verify rendered browser layout or physical signal accuracy.
 
+## Device-information splash screen
+
+Opening the web interface displays a dismissible splash with the program name,
+full patch version, firmware compile date/time, Wi-Fi station MAC address, and
+connected Wi-Fi SSID. Choose **Continue to generator** or press Escape to dismiss
+it; **Device info** in the header opens it again. Viewing or dismissing the splash
+does not enable outputs or change generator settings.
+
+The information comes from the authenticated `/api/state` response. Compile time
+is embedded using `__DATE__` and `__TIME__` from the build machine, rather than the
+browser clock or device boot time. Wi-Fi status refreshes with the existing
+five-second state poll. Disconnected devices report **Not connected**; failed
+requests show **Unavailable** and retry automatically. Older firmware without
+the new metadata reports missing fields explicitly. The splash uses the same
+firmware identifier as the connection badge, compatible with automatic version
+bumps when the versioning workflow is merged.
+
 ## Version history
 
 | Date (Asia/Beirut) | Revision | Changes |
@@ -43,3 +60,4 @@ These checks cover generator controls after state replacement, preview frequency
 | 2026-11-08 | `75c28a1` | Earlier generator control and animated-preview fixes, subsequently regressed during layout changes. |
 
 Entries are selected Git milestones, not numbered releases. Proposed standards remain awaiting approval.
+
