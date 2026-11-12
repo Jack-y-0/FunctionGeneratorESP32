@@ -20,7 +20,9 @@ pio run -e esp32dev
 pio run -e esp32dev -t upload
 ```
 
-Wi-Fi setup uses `ESP32_MUXSIGSIM`. The temporary setup password and generated web password (`admin`) are printed to Serial Monitor at 115200 baud. The **Wave generator** view uses one card per DAC output, with an individual waveform preview and independent waveform, frequency, amplitude, offset, and output-enable controls. The **Oscilloscope inputs** view uses a full-width graph with selectable ADC or PWM channels; selected ADC traces share one graph, and selected PWM traces use separate lanes within one graph. This input-scope layout does not change the DAC generator controls. The ADC time window is limited to the 1.28-second sample buffer; the PWM trace is reconstructed from measured edge timing. The generator preview animates over a fixed 2-second window while output is enabled. Disabled outputs show a flat trace; the graph is labeled as a simulated preview and does not measure the DAC output.
+Wi-Fi setup uses the open `ESP32_MUXSIGSIM` network: no password is required to join it or access the WiFiManager portal. Select your router in the portal and enter its Wi-Fi password if required. After connection, open the device IP printed to Serial Monitor at 115200 baud; the webpage and API require no login. Anyone on the connected network can access the controls.
+
+The **Wave generator** view uses one card per DAC output, with an individual waveform preview and independent waveform, frequency, amplitude, offset, and output-enable controls. The **Oscilloscope inputs** view uses a full-width graph with selectable ADC or PWM channels; selected ADC traces share one graph, and selected PWM traces use separate lanes within one graph. This input-scope layout does not change the DAC generator controls. The ADC time window is limited to the 1.28-second sample buffer; the PWM trace is reconstructed from measured edge timing. The generator preview animates over a fixed 2-second window while output is enabled. Disabled outputs show a flat trace; the graph is labeled as a simulated preview and does not measure the DAC output.
 
 ## Debug verification
 
