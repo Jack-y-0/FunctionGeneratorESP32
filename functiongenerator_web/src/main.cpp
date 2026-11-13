@@ -674,10 +674,14 @@ void setup() {
   dacWrite(DAC_PINS[1], 0);
 
   WiFi.mode(WIFI_STA);
-  Serial.println("Setup AP: ESP32_MUXSIGSIM (no password)");
+  String setupApName = "ESP32_" + WiFi.macAddress();
+  setupApName.replace(":", "");
+  Serial.print("Setup AP: ");
+  Serial.print(setupApName);
+  Serial.println(" (no password)");
   WiFiManager wifiManager;
   wifiManager.setConfigPortalTimeout(180);
-  if (!wifiManager.autoConnect("ESP32_MUXSIGSIM")) {
+  if (!wifiManager.autoConnect(setupApName.c_str())) {
     Serial.println("Wi-Fi setup timed out. Restarting; reconnect to the setup network to try again.");
     delay(500);
     ESP.restart();
@@ -715,5 +719,6 @@ void loop() {
   serviceFaultTimers();
   delay(1);
 }
+
 
 

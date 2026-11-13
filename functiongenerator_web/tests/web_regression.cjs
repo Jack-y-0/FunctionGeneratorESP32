@@ -64,6 +64,13 @@ test('splash opens at startup and renders device metadata as text',()=>{
   assert.equal(p.element('splashWifi').innerHTML,undefined);
 });
 
+test('successful state polling populates every splash field',async()=>{
+  const state={programName:'FunctionGeneratorESP32',firmware:'0.0.8',compiledAt:'Nov 13 2026 20:00:00',macAddress:'AA:BB:CC:DD:EE:FF',wifiConnected:true,wifiSsid:'Lab network',channels:[],timerTicks:1};
+  const p=page(async()=>({ok:true,json:async()=>state}));
+  await p.run('loadState()');
+  for(const [id,key] of [['splashProgram','programName'],['splashVersion','firmware'],['splashCompiled','compiledAt'],['splashMac','macAddress'],['splashWifi','wifiSsid']])assert.equal(p.element(id).textContent,state[key]);
+});
+
 test('splash distinguishes disconnected, missing metadata, and request failures',async()=>{
   let reply={ok:false,status:401};
   const p=page(async()=>reply);
@@ -80,4 +87,5 @@ test('splash distinguishes disconnected, missing metadata, and request failures'
   assert.equal(p.element('splashWifi').textContent,'Recovered network');
   assert.equal(p.element('splashVersion').textContent,'0.0.8');
 });
+
 
