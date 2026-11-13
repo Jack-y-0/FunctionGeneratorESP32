@@ -31,4 +31,26 @@ Run the versioning checks locally with:
 ```sh
 python3 -m unittest discover -s tests -v
 ```
+## Fun with Functions.
+Using some resistors, the function generator, and the oscilloscope we can have some fun with functions.
+
+Lets add two functions through equal resistors (10K) and set the frequencies almost the same.  
+
+<img width="400"   alt="Screenshot 2026-11-12 at 21 43 16" src="https://github.com/user-attachments/assets/79154b6b-fd3f-47ce-8b6a-407f82981681" />  
+
+> Schematic
+
+<img width="400"  alt="image" src="https://github.com/user-attachments/assets/a3a3a199-ae50-46a2-a886-85b03ac2377e" />   
+
+> Function Generator Tab - Wave Generator
+
+At the ESP32 oscilloscope we get a wave form that slowly changes size.  
+<img width="400"  alt="image" src="https://github.com/user-attachments/assets/19f0c000-a51c-4345-8a5f-c8e5cac7c008" />
+> Oscilloscope Tab - Input Scope
+
+Using an external oscilloscope (and adding useing the MATH function) displayingwith a longer time base we get:  
+<img width="400" alt="image" src="https://github.com/user-attachments/assets/edec834c-d14d-450c-b38b-d7892bbb8cda" />
+
+> Oscilloscope INSTEK GDS-1054B screen output capture, math function ON
+
 
