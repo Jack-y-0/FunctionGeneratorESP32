@@ -3,7 +3,6 @@
 #include <WebServer.h>
 #include <WiFiManager.h>
 #include <Preferences.h>
-#include <esp_system.h>
 #include <esp_timer.h>
 #include <math.h>
 #include "wavegen_page.h"
@@ -14,7 +13,7 @@
 
 // Pin selection follows the PlatformIO target: classic ESP32 uses GPIO25/26;
 // ESP32-S2 uses GPIO17/18 for its built-in DAC channels.
-static constexpr const char *FIRMWARE_BUILD_ID = "0.0.7";
+static constexpr const char *FIRMWARE_BUILD_ID = "0.0.8";
 static constexpr const char *PROGRAM_NAME = "FunctionGeneratorESP32";
 static constexpr const char *COMPILED_AT = __DATE__ " " __TIME__;
 #if defined(CONFIG_IDF_TARGET_ESP32S2)
@@ -92,8 +91,6 @@ static WebServer server(80);
 static Preferences settingsStore;
 static bool settingsDirty = false;
 static uint32_t lastSettingsChangeMs = 0;
-static String webPassword;
-static String setupApPassword;
 
 static const char *waveformForCommand(const String &command) {
   if (command == "a0") return "sine";
@@ -110,17 +107,9 @@ static bool validWaveform(const String &waveform) {
          waveform == "triangle" || waveform == "sawtooth" || waveform == "ppg" || waveform == "dc";
 }
 
-static String makeRandomPassword();
-
 static void loadChannelSettings() {
   settingsStore.begin("wavegen", false);
-  webPassword = settingsStore.getString("webpass", "");
-  if (webPassword.length() < 12) {
-    webPassword = makeRandomPassword();
-    settingsStore.putString("webpass", webPassword);
-  }
-  Serial.print("Web login: username=admin password=");
-  Serial.println(webPassword);
+  if (settingsStore.isKey("webpass")) settingsStore.remove("webpass");
   for (uint8_t i = 0; i < 2; ++i) {
     const String prefix = "ch" + String(i) + "_";
     const String savedWaveform = settingsStore.getString((prefix + "wave").c_str(), channelConfig[i].waveform);
@@ -150,20 +139,6 @@ static void saveChannelSettingsIfDue() {
 static void markSettingsDirty() {
   settingsDirty = true;
   lastSettingsChangeMs = millis();
-}
-
-static String makeRandomPassword() {
-  char password[17];
-  snprintf(password, sizeof(password), "%08lx%08lx",
-           static_cast<unsigned long>(esp_random()),
-           static_cast<unsigned long>(esp_random()));
-  return String(password);
-}
-
-static bool requireWebAuth() {
-  if (server.authenticate("admin", webPassword.c_str())) return true;
-  server.requestAuthentication(BASIC_AUTH, "ESP32_MUXSIGSIM");
-  return false;
 }
 
 static float gaussian(float x, float centre, float width) {
@@ -663,14 +638,14 @@ static void serviceSerial() {
 }
 
 static void beginWebServer() {
-  server.on("/", HTTP_GET, []() { if (!requireWebAuth()) return; server.send_P(200, "text/html; charset=utf-8", INDEX_HTML); });
-  server.on("/api/state", HTTP_GET, []() { if (!requireWebAuth()) return; handleState(); });
-  server.on("/api/channel", HTTP_POST, []() { if (!requireWebAuth()) return; handleChannelUpdate(); });
-  server.on("/api/scope", HTTP_GET, []() { if (!requireWebAuth()) return; handleScopeRead(); });
-  server.on("/api/pwm", HTTP_GET, []() { if (!requireWebAuth()) return; handlePwmRead(); });
-  server.on("/api/pwm/config", HTTP_POST, []() { if (!requireWebAuth()) return; handlePwmConfig(); });
-  server.on("/api/fault", HTTP_POST, []() { if (!requireWebAuth()) return; handleFaultUpdate(); });
-  server.on("/api/events", HTTP_GET, []() { if (!requireWebAuth()) return; handleFaultEvents(); });
+  server.on("/", HTTP_GET, []() { server.send_P(200, "text/html; charset=utf-8", INDEX_HTML); });
+  server.on("/api/state", HTTP_GET, handleState);
+  server.on("/api/channel", HTTP_POST, handleChannelUpdate);
+  server.on("/api/scope", HTTP_GET, handleScopeRead);
+  server.on("/api/pwm", HTTP_GET, handlePwmRead);
+  server.on("/api/pwm/config", HTTP_POST, handlePwmConfig);
+  server.on("/api/fault", HTTP_POST, handleFaultUpdate);
+  server.on("/api/events", HTTP_GET, handleFaultEvents);
   server.onNotFound([]() { server.send(404, "text/plain", "Not found"); });
   server.begin();
   Serial.println("Web server started.");
@@ -699,16 +674,10 @@ void setup() {
   dacWrite(DAC_PINS[1], 0);
 
   WiFi.mode(WIFI_STA);
-  String setupApName = "ESP32_" + WiFi.macAddress();
-  setupApName.replace(":", "");
-  setupApPassword = makeRandomPassword();
-  Serial.print("Setup AP: ");
-  Serial.print(setupApName);
-  Serial.print(" password=");
-  Serial.println(setupApPassword);
+  Serial.println("Setup AP: ESP32_MUXSIGSIM (no password)");
   WiFiManager wifiManager;
   wifiManager.setConfigPortalTimeout(180);
-  if (!wifiManager.autoConnect(setupApName.c_str(), setupApPassword.c_str())) {
+  if (!wifiManager.autoConnect("ESP32_MUXSIGSIM")) {
     Serial.println("Wi-Fi setup timed out. Restarting; reconnect to the setup network to try again.");
     delay(500);
     ESP.restart();
