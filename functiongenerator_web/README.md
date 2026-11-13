@@ -24,7 +24,7 @@ The PlatformIO status-bar buttons also provide Build, Upload, and Serial Monitor
 
 ## Connect Wi-Fi and Open the Webpage
 
-1. On first startup, or if the saved network cannot be reached, connect your phone or computer to **ESP32_MUXSIGSIM**. This setup network has **no password**. Stay connected if your device reports that it has no internet access.
+1. On first startup, or if the saved network cannot be reached, connect your phone or computer to the device network named **ESP32_<MAC without colons>** (for example, **ESP32_AABBCCDDEEFF**). Serial Monitor prints the exact name. This setup network has **no password**. Stay connected if your device reports that it has no internet access.
 2. Open the WiFiManager portal when prompted. If it does not open automatically, visit [http://192.168.4.1](http://192.168.4.1).
 3. Choose your 2.4 GHz router network, enter **the router's Wi-Fi password** if required, and save. The setup portal times out after three minutes; the ESP32 then restarts so you can try again.
 4. Reconnect your phone or computer to the same router network as the ESP32.
@@ -77,6 +77,7 @@ pio run -e esp32dev -t upload
 pio device monitor -b 115200
 ```
 
+Wi-Fi setup uses a unique SoftAP name in the format `ESP32_<station MAC without colons>`; for example, MAC `AA:BB:CC:DD:EE:FF` gives `ESP32_AABBCCDDEEFF`. The name is stable for each device and uses the same station MAC shown on the splash screen. The **Wave generator** view uses one card per DAC output, with an individual waveform preview and independent waveform, frequency, amplitude, offset, and output-enable controls. The **Oscilloscope inputs** view uses a full-width graph with selectable ADC or PWM channels; selected ADC traces share one graph, and selected PWM traces use separate lanes within one graph. This input-scope layout does not change the DAC generator controls. The ADC time window is limited to the 1.28-second sample buffer; the PWM trace is reconstructed from measured edge timing. The generator preview animates over a fixed 2-second window while output is enabled. Disabled outputs show a flat trace; the graph is labeled as a simulated preview and does not measure the DAC output.
 The webpage is embedded in the firmware. Changes to `include/wavegen_page.h` require rebuilding and uploading; no separate web server is needed.
 
 ## Troubleshooting
@@ -97,10 +98,30 @@ The webpage is embedded in the firmware. Changes to `include/wavegen_page.h` req
 
 Main files: `src/main.cpp` contains the firmware, `include/wavegen_page.h` contains the embedded webpage, and `platformio.ini` defines the board and dependencies.
 
+## Device-information splash screen
+
+Opening the web interface displays a dismissible splash with the program name,
+full patch version, firmware compile date/time, Wi-Fi station MAC address, and
+connected Wi-Fi SSID. Choose **Continue to generator** or press Escape to dismiss
+it; **Device info** in the header opens it again. Viewing or dismissing the splash
+does not enable outputs or change generator settings.
+
+The information comes from the device’s `/api/state` response. Compile time
+is embedded using `__DATE__` and `__TIME__` from the build machine, rather than the
+browser clock or device boot time. Wi-Fi status refreshes with the existing
+five-second state poll. Disconnected devices report **Not connected**; failed
+requests show **Unavailable** and retry automatically. Older firmware without
+the new metadata reports missing fields explicitly. The splash uses the same
+firmware identifier as the connection badge and automatic version bumps.
+
+## Version history
 With Node.js installed, run:
 
 ```sh
 node --test tests/web_regression.cjs
 ```
 
-The four regression tests cover generator controls, preview frequency and animation, stale PWM polling, and ordered PWM configuration requests. They use a mocked page/API and do not verify browser layout or physical signal accuracy. Use `git log --oneline` for revision history.
+Entries are selected Git milestones, not numbered releases. Proposed standards remain awaiting approval.
+
+The seven regression tests cover generator controls, preview frequency and animation, stale PWM polling, ordered PWM configuration requests, and splash metadata loading and error recovery. They use a mocked page/API and do not verify browser layout or physical signal accuracy. Use `git log --oneline` for revision history.
+

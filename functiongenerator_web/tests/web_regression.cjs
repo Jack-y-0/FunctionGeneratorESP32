@@ -7,7 +7,7 @@ function page(fetch=()=>new Promise(()=>{})){
   const elements=new Map(),buttons=[[],[]],points=[];
   const ctx=new Proxy({lineTo(x,y){points.push(y)}},{get:(o,k)=>o[k]||(()=>{})});
   function element(id){
-    if(!elements.has(id))elements.set(id,{value:'1.28',hidden:false,dataset:{},classList:{toggle(){},add(){},remove(){}},listeners:{},addEventListener(type,fn){this.listeners[type]=fn},querySelectorAll(){return []},width:700,height:220,getContext:()=>ctx});
+    if(!elements.has(id))elements.set(id,{value:'1.28',hidden:false,open:false,showModal(){this.open=true},dataset:{},classList:{toggle(){},add(){},remove(){}},listeners:{},addEventListener(type,fn){this.listeners[type]=fn},querySelectorAll(){return []},width:700,height:220,getContext:()=>ctx});
     return elements.get(id);
   }
   for(let i=0;i<2;i++)for(let j=0;j<6;j++){const b=element(`button${i}${j}`);b.dataset.command='a'+j;buttons[i].push(b)}
@@ -54,3 +54,38 @@ test('rapid PWM changes are serialized and failed disable restores selection',as
   pending[1].resolve({ok:false,status:500});await disable;
   assert.equal(p.run('scopeSelected.digital.has(4)'),true);assert.equal(p.run('pwmBusy[0]'),false);
 });
+
+test('splash opens at startup and renders device metadata as text',()=>{
+  const p=page();
+  assert.equal(p.element('deviceSplash').open,true);
+  const state={programName:'FunctionGeneratorESP32',firmware:'0.0.7',compiledAt:'Nov 12 2026 18:00:00',macAddress:'AA:BB:CC:DD:EE:FF',wifiConnected:true,wifiSsid:'Lab "A" \\ <img src=x onerror=alert(1)>'};
+  p.run(`updateDeviceInfo(${JSON.stringify(state)})`);
+  for(const [id,key] of [['splashProgram','programName'],['splashVersion','firmware'],['splashCompiled','compiledAt'],['splashMac','macAddress'],['splashWifi','wifiSsid']])assert.equal(p.element(id).textContent,state[key]);
+  assert.equal(p.element('splashWifi').innerHTML,undefined);
+});
+
+test('successful state polling populates every splash field',async()=>{
+  const state={programName:'FunctionGeneratorESP32',firmware:'0.0.8',compiledAt:'Nov 13 2026 20:00:00',macAddress:'AA:BB:CC:DD:EE:FF',wifiConnected:true,wifiSsid:'Lab network',channels:[],timerTicks:1};
+  const p=page(async()=>({ok:true,json:async()=>state}));
+  await p.run('loadState()');
+  for(const [id,key] of [['splashProgram','programName'],['splashVersion','firmware'],['splashCompiled','compiledAt'],['splashMac','macAddress'],['splashWifi','wifiSsid']])assert.equal(p.element(id).textContent,state[key]);
+});
+
+test('splash distinguishes disconnected, missing metadata, and request failures',async()=>{
+  let reply={ok:false,status:401};
+  const p=page(async()=>reply);
+  p.run('updateDeviceInfo({wifiConnected:false})');
+  assert.equal(p.element('splashWifi').textContent,'Not connected');
+  assert.equal(p.element('splashVersion').textContent,'Not reported by firmware');
+  await p.run('loadState()');
+  assert.match(p.element('splashStatus').textContent,/login rejected/);
+  assert.equal(p.element('splashWifi').textContent,'Unavailable');
+  reply={ok:false,status:500};await p.run('loadState()');
+  assert.match(p.element('splashStatus').textContent,/retrying automatically/);
+  reply={ok:true,json:async()=>({firmware:'0.0.8',wifiConnected:true,wifiSsid:'Recovered network',channels:[],timerTicks:1})};
+  await p.run('loadState()');
+  assert.equal(p.element('splashWifi').textContent,'Recovered network');
+  assert.equal(p.element('splashVersion').textContent,'0.0.8');
+});
+
+
