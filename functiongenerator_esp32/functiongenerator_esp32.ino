@@ -1,6 +1,6 @@
 // 26/08/2026.    dd/mm/yy
 #define PROGRAMME_NAME "functiongenerator_esp32"
-#define VERSION " V 0.0.7 "  // ESP32-S2 DAC pin correction; web-controlled sketch added
+#define VERSION " V 0.0.8 "  // ESP32-S2 DAC pin correction; web-controlled sketch added
 #define MODEL_NAME "Model: functiongenerator_esp32"
 #define DEVICE_UNDER_TEST "ESP32-S2 WROOM DevKit 1"
 #define LICENSE "GNU Affero General Public License, version 3 "
