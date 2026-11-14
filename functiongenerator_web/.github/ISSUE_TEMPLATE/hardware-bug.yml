@@ -1,0 +1,40 @@
+# .github/ISSUE_TEMPLATE/hardware-bug.yml
+name: "🛠️ Hardware Bug Report"
+description: Report a physical PCB error, soldering defect, or schematic issue.
+title: "[HW]: "
+labels: ["area:hardware", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please verify this is a physical hardware or schematic issue. For code bugs, use the Firmware template.
+  - type: dropdown
+    id: board-type
+    attributes:
+      label: Target Board / MCU
+      options:
+        - ESP32 (DevKitC / WROOM)
+        - Arduino Uno R3 / R4
+        - Custom PCB (Specify in description)
+        - Other
+    validations:
+      required: true
+  - type: input
+    id: hw-revision
+    attributes:
+      label: Hardware Revision / PCB Version
+      placeholder: "e.g., v1.0.2, Proto-A"
+    validations:
+      required: true
+  - type: textarea
+    id: problem-description
+    attributes:
+      label: Behavior Observed
+      description: What is the hardware doing incorrectly? (e.g., overheating, wrong voltage rail, floating pins).
+    validations:
+      required: true
+  - type: textarea
+    id: schematics-logs
+    attributes:
+      label: Schematics, Logic Analyzer Outputs, or Images
+      description: Drag and drop screenshots of your schematic, scope captures, or photos of the physical wiring.

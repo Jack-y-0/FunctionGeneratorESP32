@@ -1,0 +1,43 @@
+# .github/ISSUE_TEMPLATE/enhancement.yml
+name: "🚀 Enhancement / Feature Request"
+description: Propose a new software feature, performance optimization, or library addition.
+title: "[Enhancement]: "
+labels: ["type:enhancement", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for suggesting an improvement! Please provide as much architectural and hardware context as possible.
+  - type: textarea
+    id: problem-statement
+    attributes:
+      label: Is your feature request related to a problem or limitation?
+      description: A clear and concise description of what the current firmware/hardware configuration fails to do or limits.
+      placeholder: "e.g., The current synchronous SPI driver blocks execution during large display refreshes, causing a drop in sensor sample rates."
+    validations:
+      required: true
+  - type: textarea
+    id: proposed-solution
+    attributes:
+      label: Describe the Proposed Solution
+      description: What should the implementation look like? Specify any hardware resources utilized (DMA channels, interrupts, GPIOs).
+      placeholder: "e.g., Implement an asynchronous DMA-backed SPI transmit routine for the ESP32 to offload the CPU."
+    validations:
+      required: true
+  - type: dropdown
+    id: resource-impact
+    attributes:
+      label: Estimated Hardware/Resource Impact
+      description: How will this impact the microcontroller's constrained resources?
+      options:
+        - High (Requires extensive RAM/Flash, extra GPIOs, or strict timings)
+        - Medium (Moderate footprint expansion, standard peripheral use)
+        - Low (Purely algorithmic or structural optimization)
+        - Uncertain / Needs Evaluation
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternative Solutions Evaluated
+      description: Describe any workarounds or alternative libraries you considered.

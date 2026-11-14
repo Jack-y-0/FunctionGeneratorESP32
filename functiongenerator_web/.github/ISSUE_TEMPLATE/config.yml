@@ -1,0 +1,6 @@
+# .github/ISSUE_TEMPLATE/config.yml
+blank_issues_enabled: false
+contact_links:
+  - name: Ask a Question / Community Support
+    url: https://github.com
+    about: For hardware wiring help, troubleshooting, or general questions.
