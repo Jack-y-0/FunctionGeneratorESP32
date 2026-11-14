@@ -1,0 +1,30 @@
+# .github/ISSUE_TEMPLATE/firmware-bug.yml
+name: "💻 Firmware Bug Report"
+description: Report an exception, crash, or unexpected behavior in the code.
+title: "[FW]: "
+labels: ["area:firmware", "triage"]
+body:
+  - type: input
+    id: environment
+    attributes:
+      label: Toolchain & IDE Version
+      placeholder: "e.g., Arduino IDE 2.3.2, ESP-IDF v5.1, PlatformIO"
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction-steps
+    attributes:
+      label: Steps to Reproduce
+      description: Describe the exact steps or trigger inputs required to cause the bug.
+      placeholder: |
+        1. Flash the binary
+        2. Press the boot button
+        3. Send serial command '0xAA'
+    validations:
+      required: true
+  - type: textarea
+    id: serial-logs
+    attributes:
+      label: Serial Monitor Output / Stack Dump
+      description: Paste raw UART, core dump text, or panic logs here.
+      render: c

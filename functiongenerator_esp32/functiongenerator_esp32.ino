@@ -1,8 +1,8 @@
 // 26/08/2026.    dd/mm/yy
 #define PROGRAMME_NAME "functiongenerator_esp32"
-#define VERSION " V 0.0.6 "  // Firmware, Version 0.0.5 BPM has changed from about 72 to about 365 #15
+#define VERSION " V 0.0.9 "  // ESP32-S2 DAC pin correction; web-controlled sketch added
 #define MODEL_NAME "Model: functiongenerator_esp32"
-#define DEVICE_UNDER_TEST "ESP32 S2 WRROM DevKit 1"
+#define DEVICE_UNDER_TEST "ESP32-S2 WROOM DevKit 1"
 #define LICENSE "GNU Affero General Public License, version 3 "
 #define ORIGIN "UK"
  
@@ -14,7 +14,8 @@
   OUTPUTS:
 
   GPIO 2  -> PWM -> Onboard LED
-  GPIO 25 -> DAC -> Analogue PPG waveform
+  DAC1_PIN -> Analogue PPG waveform
+  DAC2_PIN -> Half-amplitude PPG waveform
 
   Heart rate:
       72 BPM
@@ -28,7 +29,8 @@
   ============================================================
 */
 
-// #include <Arduino.h>
+#include <Arduino.h>
+#include <math.h>
 
 
 // ============================================================
@@ -36,7 +38,15 @@
 // ============================================================
 
 const int LED_PIN = 2;       // Onboard LED
-const int DAC_PIN = 25;      // DAC1 on classic ESP32
+#if defined(CONFIG_IDF_TARGET_ESP32S2)
+const int DAC1_PIN = 17;
+const int DAC2_PIN = 18;
+#elif defined(CONFIG_IDF_TARGET_ESP32)
+const int DAC1_PIN = 25;
+const int DAC2_PIN = 26;
+#else
+#error "Supported targets: classic ESP32 and ESP32-S2."
+#endif
 #define GPIO0 0 // Boot bottom 
 
 // ============================================================
@@ -185,8 +195,9 @@ void setup()
 
   // splashserial();
 
-  dacWrite(25, 128); // Sets GPIO25 to midrange
-  dacWrite(26, 64); // Sets GPIO26 to quarter-range   
+  pinMode(GPIO0, INPUT_PULLUP); // BOOT button pauses the waveform when held
+  dacWrite(DAC1_PIN, 128); // DAC1 midpoint
+  dacWrite(DAC2_PIN, 64);  // DAC2 quarter-scale   
 
   // --------------------------------------------------------
   // GPIO 2 PWM
@@ -221,7 +232,12 @@ void setup()
   Serial.println();
 
   Serial.println("GPIO 2  -> LED / PWM");
-  Serial.println("GPIO 25 -> Analogue DAC");
+  Serial.print("GPIO ");
+  Serial.print(DAC1_PIN);
+  Serial.println(" -> DAC1 PPG output");
+  Serial.print("GPIO ");
+  Serial.print(DAC2_PIN);
+  Serial.println(" -> DAC2 half-amplitude PPG output");
 
   Serial.println("======================================");
 }
@@ -295,8 +311,8 @@ void loop()
 
   if (true == digitalRead(GPIO0))
    {
-       dacWrite(25, ledBrightness); // Sets GPIO25 to same as LED
-       dacWrite(26, ledBrightness/2); // Sets GPIO26 to 1/2 of LED
+       dacWrite(DAC1_PIN, ledBrightness); // DAC1
+       dacWrite(DAC2_PIN, ledBrightness / 2); // DAC2 at half amplitude
 
     }
    

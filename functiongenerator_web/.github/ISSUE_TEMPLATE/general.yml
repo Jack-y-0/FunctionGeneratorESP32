@@ -1,0 +1,31 @@
+# .github/ISSUE_TEMPLATE/general.yml
+name: "📋 General Task / Maintenance"
+description: Use this for repo upkeep, build system improvements, CI/CD changes, or general tasks.
+title: "[Task]: "
+labels: ["type:maintenance"]
+body:
+  - type: textarea
+    id: task-description
+    attributes:
+      label: Task Description
+      description: A clear and concise description of the work that needs to be done.
+      placeholder: "e.g., Update GitHub Actions workflow to auto-compile binaries for ESP32-S3 targets on pull requests."
+    validations:
+      required: true
+  - type: textarea
+    id: motivation
+    attributes:
+      label: Motivation / Rationale
+      description: Why is this task necessary now? (e.g., improving developer velocity, updating an out-of-date build dependency).
+    validations:
+      required: true
+  - type: checkboxes
+    id: areas-affected
+    attributes:
+      label: Scope of Impact
+      description: Select all areas this maintenance task touches.
+      options:
+        - label: Build System (CMake, PlatformIO configs, Makefiles)
+        - label: CI/CD Automations (GitHub Actions, linters)
+        - label: Documentation & Asset Files (Readme, pinout charts, media)
+        - label: Repository Structure / Refactoring

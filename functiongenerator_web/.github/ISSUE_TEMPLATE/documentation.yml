@@ -1,0 +1,50 @@
+# .github/ISSUE_TEMPLATE/documentation.yml
+name: "📝 Documentation, Pinout & Wiring Changes"
+description: Track modifications to pin assignments, schematic errors, or hardware wiring documentation.
+title: "[Docs/Pinout]: "
+labels: ["area:documentation", "type:pin-change"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this template to propose or track physical pin assignment shifts, wiring diagram revisions, or board architecture documentation updates.
+  - type: dropdown
+    id: change-type
+    attributes:
+      label: Type of Modification
+      description: What layer of documentation or hardware layout is being modified?
+      options:
+        - Pin Assignment Swap / Reallocation (Firmware impact)
+        - Schematic or PCB Layout Error Correction
+        - External Wiring Diagram / Breadboard Guide Update
+        - Datasheet, Register Map, or README Update
+    validations:
+      required: true
+  - type: textarea
+    id: pin-mapping
+    attributes:
+      label: Current vs. Proposed Pin Mapping
+      description: If you are swapping pins, explicitly state the old pin vs. the new pin. 
+      placeholder: |
+        - OLD: I2C SDA -> GPIO 21 (ESP32) / A4 (Uno)
+        - NEW: I2C SDA -> GPIO 18 (ESP32) -> Swapped to clear hardware conflict with SPI clock line.
+    validations:
+      required: false
+  - type: textarea
+    id: reason-for-change
+    attributes:
+      label: Engineering Justification
+      description: Why is this change necessary? (e.g., peripheral hardware conflict, routing convenience on PCB, switching to an ADC/PWM capable pin).
+      placeholder: "GPIO 21 lacked the hardware pull-up required for high-speed I2C operation on our prototype board."
+    validations:
+      required: true
+  - type: checkboxes
+    id: downstream-impact
+    attributes:
+      label: Downstream Impacts
+      description: Select all items that must be updated because of this change.
+      options:
+        - label: Physical PCB layout / Gerber modification required
+        - label: Firmware source code configuration (e.g., config.h / pins.h)
+        - label: README.md, wiring tables, or external wiki images
+        - label: End-user instruction manual or assembly guide
