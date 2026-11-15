@@ -1,0 +1,52 @@
+name: Bump version after merge
+
+on:
+  pull_request_target:
+    types: [closed]
+    branches: [main]
+
+permissions:
+  contents: write
+
+# A rerun of the same PR must not race itself. Different PRs use optimistic
+# push/retry below, so GitHub concurrency cannot discard queued merge events.
+concurrency:
+  group: version-bump-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  bump:
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    steps:
+      # This privileged workflow only executes code already merged into main.
+      # Never check out the PR head or interpolate PR titles/bodies into shell.
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Increment patch version and push
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          for attempt in {1..10}; do
+            git fetch origin main
+            git reset --hard origin/main
+            python3 scripts/bump_version.py --pr "$PR_NUMBER"
+            git add VERSION functiongenerator_esp32/functiongenerator_esp32.ino functiongenerator_web/src/main.cpp
+            if git diff --cached --quiet; then
+              exit 0
+            fi
+            git commit -m "chore: bump version after PR #${PR_NUMBER}"
+            if git push origin HEAD:main; then
+              exit 0
+            fi
+            # A concurrent merge/bump may have advanced main. Recompute from it.
+            sleep "$attempt"
+          done
+          echo "Unable to push version bump after 10 attempts" >&2
+          exit 1

@@ -1,0 +1,19 @@
+name: Versioning checks
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Test version increments and rerun behavior
+        run: python3 -m unittest discover -s tests -v
+      - name: Test web controls
+        run: node functiongenerator_web/tests/web_regression.cjs

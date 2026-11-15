@@ -1,0 +1,28 @@
+# .github/ISSUE_TEMPLATE/spike.yml
+name: "🎯 Spike (Research Task)"
+description: A time-boxed research window to investigate new sensors, libraries, or protocols.
+title: "[Spike]: "
+labels: ["type:research"]
+body:
+  - type: textarea
+    id: objective
+    attributes:
+      label: Core Objective
+      description: What specific engineering question are we trying to answer?
+    validations:
+      required: true
+  - type: input
+    id: timebox
+    attributes:
+      label: Timebox Limit
+      placeholder: "e.g., 2 days, 8 engineering hours"
+    validations:
+      required: true
+  - type: textarea
+    id: success-criteria
+    attributes:
+      label: Definition of Done
+      description: What concrete artifacts must this spike yield? (e.g., a breadboard prototype, benchmarking data sheet).
+      placeholder: "- Working proof-of-concept sketch using the new I2C sensor\n- Comparative power-consumption table"
+    validations:
+      required: true
