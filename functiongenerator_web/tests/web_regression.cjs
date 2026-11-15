@@ -37,6 +37,39 @@ test('preview cycle spacing depends on frequency and enabled phase advances with
   p.run('animatePreview(0);animatePreview(100)');assert(Math.abs(p.run('previewPhase[0]')-.3)<1e-8);assert.equal(p.run('previewPhase[1]'),0);
   p.run("channels[0].waveform='dc';animatePreview(200)");assert(Math.abs(p.run('previewPhase[0]')-.3)<1e-8);
 });
+
+test('audio frequency controls submit 20 kHz and reject out-of-range numeric edits',async()=>{
+  const requests=[];
+  const p=page(async(url,options)=>{
+    const params=new URLSearchParams(options.body);requests.push(params);
+    return {ok:true,json:async()=>({channel:Number(params.get('channel')),frequency:Number(params.get('frequency'))})};
+  });
+  for(let i=0;i<2;i++){
+    p.element('freqInput'+i).listeners.change({target:{value:'20000'}});
+    await new Promise(setImmediate);
+    assert.equal(p.run(`channels[${i}].frequency`),20000);
+    assert.equal(p.element('freq'+i).value,20000);
+    assert.equal(requests.at(-1).get('frequency'),'20000.0');
+    for(const value of ['20000.1','0.4','bad','']){
+      const target={value};p.element('freqInput'+i).listeners.change({target});
+      assert.equal(p.run(`channels[${i}].frequency`),20000);
+      assert.equal(target.value,20000);
+    }
+  }
+});
+
+test('audio previews show four cycles and DC disables both frequency controls',()=>{
+  const p=page();
+  for(const frequency of [20,440,1000,20000]){
+    p.run(`channels[0].frequency=${frequency}`);
+    assert(Math.abs(p.run('previewWindow(0)*channels[0].frequency')-4)<1e-9);
+    assert(p.run('previewWindow(0)*channels[0].frequency/700')<.01);
+  }
+  assert.equal(p.run('previewWindowLabel(previewWindow(0))'),'200 us');
+  p.run("channels[0].waveform='dc';render(0)");
+  assert.equal(p.element('freq0').disabled,true);
+  assert.equal(p.element('freqInput0').disabled,true);
+});
 test('stale PWM poll cannot reselect a pin after disabling capture',async()=>{
   let resolvePoll;
   const p=page(url=>url==='/api/pwm'?new Promise(resolve=>{resolvePoll=resolve}):Promise.resolve({ok:true}));

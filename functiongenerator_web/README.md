@@ -38,9 +38,21 @@ The webpage and API require **no username or password**. Anyone on the connected
 
 ### Wave Generator
 
-Each DAC channel has independent waveform, frequency, amplitude, offset, and output-enable controls. Choose sine, square, triangle, sawtooth, PPG, or DC. The waveform frequency range is **0.5-10 Hz**.
+Each DAC channel has independent waveform, frequency, amplitude, offset, and output-enable controls. Choose sine, square, triangle, sawtooth, PPG, or DC. The waveform frequency range is **0.5 Hz-20 kHz**, in 0.1 Hz steps. Use the slider or type a precise frequency into the numeric field below it.
 
-Enable the desired output explicitly. Waveform settings are saved, but the enabled state is never restored after a reboot. The animated graph is a **simulated preview over a two-second window**, not a measurement of the physical output. Disabled outputs show a flat trace.
+Enable the desired output explicitly. Waveform settings are saved, but the enabled state is never restored after a reboot. The animated graph is a **simulated preview**, not a measurement of the physical output. Its window is at most two seconds and shortens to four cycles at higher frequencies (200 microseconds at 20 kHz). Disabled outputs show a flat trace.
+
+### Audio Output and Limits
+
+Both DACs use the ESP32's I2S0/DMA driver at a configured **200,000 samples/s per channel**. Independent 32-bit phase accumulators and 1,024-entry lookup tables generate the waveforms. The GPIO2 heartbeat remains at 72 BPM regardless of the output frequency. This implementation targets the classic ESP32 and reserves I2S0 for the DACs.
+
+The output path uses Espressif's [built-in DAC mode and I2S DMA driver](https://docs.espressif.com/projects/esp-idf/en/v4.4.8/esp32/api-reference/peripherals/i2s.html#configuring-i2s-to-use-internal-dac-for-analog-output), provided by the project's pinned Arduino/ESP-IDF toolchain.
+
+At 20 kHz there are only **10 samples per cycle**. The 8-bit DAC produces stair steps and sampling images; square, triangle, sawtooth, and PPG shapes lose detail and can alias at high frequencies. The range is a software capability, not a measured bandwidth or distortion specification. Validate frequency, amplitude, distortion, and continuous streaming on your board before relying on audio performance. The internal ADC scope still samples at about 200 frames/s and cannot measure audio-range output correctly; use an external oscilloscope.
+
+For listening, use a high-impedance **line input or powered amplifier**, with a shared ground and an appropriately designed attenuator and DC-blocking capacitor. A 1 kOhm series resistor can limit current but does not remove the DAC's DC offset or guarantee a suitable line level. Begin with a low amplitude and low amplifier volume. Do not drive a speaker or headphones directly from a DAC GPIO. Component choices and wiring must match the receiving input; see the [bench guide](docs/bench_verification_and_output_interface.md#audio-range-verification-issue-4).
+
+Four 256-frame DMA buffers plus the producer block introduce up to roughly 6.4 ms of queued output at the nominal rate; controls and timed faults apply at block boundaries. `/api/state` reports `outputDriver`, `sampleRateHz`, `maxFrequencyHz`, and `streamWriteErrors`; the existing `timerRunning` and `timerTicks` fields now describe the DMA producer. `dacCodes` are the latest queued codes, not measured pin voltages. A failed or partial DMA write stops the stream and drives both DACs to zero. DMA buffers are cleared on underflow, but `streamWriteErrors` does not count every possible underflow; bench checks remain necessary, including during Wi-Fi traffic and settings saves.
 
 ### Oscilloscope Inputs
 
@@ -79,7 +91,7 @@ pio run -e esp32dev -t upload
 pio device monitor -b 115200
 ```
 
-Wi-Fi setup uses a unique SoftAP name in the format `ESP32_<station MAC without colons>`; for example, MAC `AA:BB:CC:DD:EE:FF` gives `ESP32_AABBCCDDEEFF`. The name is stable for each device and uses the same station MAC shown on the splash screen. The **Wave generator** view uses one card per DAC output, with an individual waveform preview and independent waveform, frequency, amplitude, offset, and output-enable controls. The **Oscilloscope inputs** view uses a full-width graph with selectable ADC or PWM channels; selected ADC traces share one graph, and selected PWM traces use separate lanes within one graph. This input-scope layout does not change the DAC generator controls. The ADC time window is limited to the 1.28-second sample buffer; the PWM trace is reconstructed from measured edge timing. The generator preview animates over a fixed 2-second window while output is enabled. Disabled outputs show a flat trace; the graph is labeled as a simulated preview and does not measure the DAC output.
+The unique setup-network name uses the station MAC shown on the splash screen and is stable for each device.
 The webpage is embedded in the firmware. Changes to `include/wavegen_page.h` require rebuilding and uploading; no separate web server is needed.
 
 ## Troubleshooting
@@ -91,7 +103,7 @@ The webpage is embedded in the firmware. Changes to `include/wavegen_page.h` req
 | Upload reports that the port is busy | Close Serial Monitor and any other program using the board, then retry Upload. |
 | Upload stays at `Connecting...` | Hold BOOT while connecting starts; release it when writing begins. |
 | Setup network is missing | Check Serial Monitor: the ESP32 may already be connected to its saved Wi-Fi network. |
-| Portal does not open | Stay connected to ESP32_MUXSIGSIM and open http://192.168.4.1 before the three-minute timeout. |
+| Portal does not open | Stay connected to the ESP32 network named in Serial Monitor and open http://192.168.4.1 before the three-minute timeout. |
 | Device webpage cannot be reached | Use the IP from the latest startup log and connect to the same router network. Guest-network or client isolation can block access. |
 | Password prompt still appears | Upload the latest firmware, verify you are opening this ESP32's IP, and reload the page. |
 | Output is flat | Enable the channel and check amplitude and waveform settings. DC and zero-amplitude signals are flat. Verify the actual DAC pin separately. |
@@ -125,13 +137,15 @@ node --test tests/web_regression.cjs
 
 Entries are selected Git milestones, not numbered releases. Proposed standards remain awaiting approval.
 
-The seven regression tests cover generator controls, preview frequency and animation, stale PWM polling, ordered PWM configuration requests, and splash metadata loading and error recovery. They use a mocked page/API and do not verify browser layout or physical signal accuracy. Use `git log --oneline` for revision history.
+The nine browser-logic regression tests cover generator controls, audio-frequency entry, preview frequency and animation, stale PWM polling, ordered PWM configuration requests, and splash metadata loading and error recovery. They use a mocked page/API and do not verify browser layout or physical signal accuracy. Use `git log --oneline` for revision history.
 
 To also check LED pulse timing, install a host C++ compiler (`c++`, or set `CXX` to its executable) and run:
 
 ```sh
-node --test tests/web_regression.cjs tests/heartbeat_regression.cjs
+node --test tests/web_regression.cjs tests/heartbeat_regression.cjs tests/audio_regression.cjs
 ```
 
 The heartbeat check verifies 72 pulses per minute, the PWM brightness range, and timing after long uptime. After uploading, confirm the GPIO2 LED pulses during Wi-Fi setup and with both outputs disabled, and that channel controls do not change its rate.
+
+The audio check compiles the actual DMA producer against a mocked I2S sink and checks channel packing, independent frequencies through 20 kHz, DC and disabled outputs, timed fault behavior, and write-failure shutdown. Browser checks also cover 20 kHz entry and adaptive previews. These tests do not measure the hardware sample clock, CPU headroom, analog quality, or real DMA underflow behavior.
 

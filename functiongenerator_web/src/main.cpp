@@ -4,8 +4,10 @@
 #include <WiFiManager.h>
 #include <Preferences.h>
 #include <esp_timer.h>
+#include <driver/i2s.h>
 #include <math.h>
 #include "wavegen_page.h"
+#include "dac_stream.h"
 
 #if !defined(CONFIG_IDF_TARGET_ESP32) || defined(CONFIG_IDF_TARGET_ESP32S2)
 #error "This multichannel scope branch is mapped for the classic ESP32 DevKit (esp32dev)."
@@ -25,15 +27,14 @@ static constexpr uint8_t DAC_PINS[2] = {25, 26};
 #else
 #error "This project supports classic ESP32 and ESP32-S2 targets only."
 #endif
-static constexpr uint32_t SAMPLE_RATE_HZ = 4000;
+static constexpr uint32_t SAMPLE_RATE_HZ = DAC_SAMPLE_RATE_HZ;
 static constexpr uint8_t HEARTBEAT_LED_PIN = 2;
 static constexpr uint8_t HEARTBEAT_PWM_CHANNEL = 0;
 static constexpr uint32_t HEARTBEAT_BPM = 72;
 static constexpr uint32_t HEARTBEAT_UPDATE_US = 10000;
-static constexpr uint32_t SAMPLE_PERIOD_US = 1000000UL / SAMPLE_RATE_HZ;
 static constexpr float DAC_FULL_SCALE_V = 3.3f;
 static constexpr float MIN_FREQUENCY_HZ = 0.5f;
-static constexpr float MAX_FREQUENCY_HZ = 10.0f;
+static constexpr float MAX_FREQUENCY_HZ = DAC_MAX_FREQUENCY_HZ;
 static constexpr uint8_t ADC_INPUT_PINS[] = {32, 33, 34, 35, 36, 39};
 static constexpr uint8_t ADC_SCOPE_CHANNELS = sizeof(ADC_INPUT_PINS) / sizeof(ADC_INPUT_PINS[0]);
 static constexpr uint16_t SCOPE_BUFFER_LENGTH = 256;
@@ -66,17 +67,17 @@ static ChannelConfig channelConfig[2] = {
   {"ppg", 1.2f, 90.0f, 50.0f, false},
   {"ppg", 1.2f, 45.0f, 50.0f, false}
 };
-static float phase[2] = {0.0f, 0.0f};
 static FaultConfig faultConfig[2] = {};
 static EventRecord eventLog[24] = {};
 static uint8_t eventLogNext = 0;
 static uint8_t eventLogCount = 0;
 static portMUX_TYPE configMux = portMUX_INITIALIZER_UNLOCKED;
-static esp_timer_handle_t sampleTimer = nullptr;
 static esp_timer_handle_t heartbeatTimer = nullptr;
 static volatile uint32_t sampleTicks = 0;
 static volatile uint8_t lastDacCodes[2] = {0, 0};
 static bool sampleTimerStarted = false;
+static uint32_t streamWriteErrors = 0;
+static float waveformTables[6][DAC_TABLE_SIZE];
 static uint16_t scopeSamples[ADC_SCOPE_CHANNELS][SCOPE_BUFFER_LENGTH] = {};
 static uint16_t scopeWriteIndex = 0;
 static uint16_t scopeSampleCount = 0;
@@ -212,49 +213,122 @@ static uint8_t sampleToDacCode(const ChannelConfig &config, float wave) {
   return static_cast<uint8_t>(lroundf((volts / DAC_FULL_SCALE_V) * 255.0f));
 }
 
-// Runs from the ESP timer task every 250 us and applies an active timed fault.
-static void onSampleTimer(void *) {
-  ChannelConfig local[2];
-  FaultConfig faults[2];
-  portENTER_CRITICAL(&configMux);
-  local[0] = channelConfig[0]; local[1] = channelConfig[1];
-  faults[0] = faultConfig[0]; faults[1] = faultConfig[1];
-  ++sampleTicks;
-  portEXIT_CRITICAL(&configMux);
-  const uint64_t nowUs = esp_timer_get_time();
-  for (uint8_t i = 0; i < 2; ++i) {
-    if (!local[i].enabled) {
-      dacWrite(DAC_PINS[i], 0);
-      lastDacCodes[i] = 0;
-      continue;
-    }
-    const bool active = faults[i].active && nowUs < faults[i].expiresAtUs;
-    if (active && faults[i].mode == FAULT_DROPOUT) {
-      dacWrite(DAC_PINS[i], 0);
-      lastDacCodes[i] = 0;
-    } else {
+static const char *const WAVEFORMS[] = {"sine", "square", "triangle", "sawtooth", "ppg", "dc"};
+
+static uint8_t waveformIndex(const char *waveform) {
+  for (uint8_t i = 0; i < 6; ++i) if (strcmp(waveform, WAVEFORMS[i]) == 0) return i;
+  return 0;
+}
+
+// Only the producer task owns the phase accumulators and output lookup tables.
+static void dacStreamTask(void *) {
+  DacPhase oscillators[2];
+  static uint8_t outputTables[2][DAC_TABLE_SIZE];
+  ChannelConfig cached[2] = {};
+  uint8_t codes[2] = {};
+  uint32_t frames[DAC_BLOCK_FRAMES];
+  while (true) {
+    ChannelConfig local[2];
+    FaultConfig faults[2];
+    portENTER_CRITICAL(&configMux);
+    memcpy(local, channelConfig, sizeof(local));
+    memcpy(faults, faultConfig, sizeof(faults));
+    portEXIT_CRITICAL(&configMux);
+    const uint64_t nowUs = esp_timer_get_time();
+    bool dropout[2], missing[2];
+    uint8_t baseline[2];
+    for (uint8_t i = 0; i < 2; ++i) {
+      const bool active = faults[i].active && nowUs < faults[i].expiresAtUs;
+      dropout[i] = active && faults[i].mode == FAULT_DROPOUT;
+      missing[i] = active && faults[i].mode == FAULT_MISSING_PULSE && strcmp(local[i].waveform, "ppg") == 0;
       ChannelConfig effective = local[i];
       if (active && faults[i].mode == FAULT_REDUCED_AMPLITUDE) effective.amplitudePercent *= 0.5f;
       if (active && faults[i].mode == FAULT_BASELINE_SHIFT) effective.offsetPercent = fminf(100.0f, effective.offsetPercent + 10.0f);
-      float value = normalizedWaveform(effective.waveform, phase[i]);
-      if (active && faults[i].mode == FAULT_MISSING_PULSE && strcmp(effective.waveform, "ppg") == 0 && faults[i].skipCurrentBeat) value = 0.05f;
-      const uint8_t code = sampleToDacCode(effective, value);
-      dacWrite(DAC_PINS[i], code);
-      lastDacCodes[i] = code;
+      if (strcmp(cached[i].waveform, effective.waveform) != 0 ||
+          cached[i].amplitudePercent != effective.amplitudePercent || cached[i].offsetPercent != effective.offsetPercent) {
+        const uint8_t shape = waveformIndex(effective.waveform);
+        for (uint16_t j = 0; j < DAC_TABLE_SIZE; ++j) outputTables[i][j] = sampleToDacCode(effective, waveformTables[shape][j]);
+        cached[i] = effective;
+      }
+      oscillators[i].setFrequency(local[i].frequencyHz);
+      baseline[i] = sampleToDacCode(effective, 0.05f);
     }
-    phase[i] += local[i].frequencyHz / static_cast<float>(SAMPLE_RATE_HZ);
-    if (phase[i] >= 1.0f) {
-      phase[i] -= floorf(phase[i]);
-      if (active && faults[i].mode == FAULT_MISSING_PULSE) {
-        portENTER_CRITICAL(&configMux);
-        if (faultConfig[i].active && faultConfig[i].mode == FAULT_MISSING_PULSE) {
-          ++faultConfig[i].beatsSinceStart;
-          faultConfig[i].skipCurrentBeat = (faultConfig[i].beatsSinceStart % 3U) == 0U;
+    for (uint16_t frame = 0; frame < DAC_BLOCK_FRAMES; ++frame) {
+      for (uint8_t i = 0; i < 2; ++i) {
+        codes[i] = !local[i].enabled || dropout[i] ? 0 :
+                   missing[i] && faults[i].skipCurrentBeat ? baseline[i] : outputTables[i][oscillators[i].index()];
+        if (local[i].enabled && oscillators[i].advance() && missing[i]) {
+          ++faults[i].beatsSinceStart;
+          faults[i].skipCurrentBeat = (faults[i].beatsSinceStart % 3U) == 0U;
         }
-        portEXIT_CRITICAL(&configMux);
+      }
+      frames[frame] = packDacFrame(codes[0], codes[1]);
+    }
+    size_t written = 0;
+    const esp_err_t result = i2s_write(I2S_NUM_0, frames, sizeof(frames), &written, pdMS_TO_TICKS(100));
+    portENTER_CRITICAL(&configMux);
+    sampleTicks += written / sizeof(uint32_t);
+    lastDacCodes[0] = codes[0]; lastDacCodes[1] = codes[1];
+    for (uint8_t i = 0; i < 2; ++i) {
+      if (missing[i] && faultConfig[i].active && faultConfig[i].mode == FAULT_MISSING_PULSE &&
+          faultConfig[i].expiresAtUs == faults[i].expiresAtUs) {
+        faultConfig[i].beatsSinceStart = faults[i].beatsSinceStart;
+        faultConfig[i].skipCurrentBeat = faults[i].skipCurrentBeat;
       }
     }
+    if (result != ESP_OK || written != sizeof(frames)) {
+      ++streamWriteErrors;
+      sampleTimerStarted = false;
+      lastDacCodes[0] = 0; lastDacCodes[1] = 0;
+    }
+    portEXIT_CRITICAL(&configMux);
+    if (result != ESP_OK || written != sizeof(frames)) {
+      i2s_stop(I2S_NUM_0);
+      i2s_set_dac_mode(I2S_DAC_CHANNEL_DISABLE);
+      dacWrite(DAC_PINS[0], 0); dacWrite(DAC_PINS[1], 0);
+      Serial.printf("DAC stream stopped after write error %d (%u bytes).\n", result, static_cast<unsigned>(written));
+      vTaskDelete(nullptr);
+      return;
+    }
   }
+}
+
+static void beginDacStream() {
+  for (uint8_t shape = 0; shape < 6; ++shape) {
+    for (uint16_t j = 0; j < DAC_TABLE_SIZE; ++j) waveformTables[shape][j] = normalizedWaveform(WAVEFORMS[shape], static_cast<float>(j) / DAC_TABLE_SIZE);
+  }
+  i2s_config_t config = {};
+  config.mode = static_cast<i2s_mode_t>(I2S_MODE_MASTER | I2S_MODE_TX | I2S_MODE_DAC_BUILT_IN);
+  config.sample_rate = SAMPLE_RATE_HZ;
+  config.bits_per_sample = I2S_BITS_PER_SAMPLE_16BIT;
+  config.channel_format = I2S_CHANNEL_FMT_RIGHT_LEFT;
+  config.communication_format = I2S_COMM_FORMAT_STAND_MSB;
+  config.intr_alloc_flags = ESP_INTR_FLAG_LEVEL1;
+  config.dma_buf_count = 4;
+  config.dma_buf_len = DAC_BLOCK_FRAMES;
+  config.use_apll = false;
+  config.tx_desc_auto_clear = true;
+  esp_err_t result = i2s_driver_install(I2S_NUM_0, &config, 0, nullptr);
+  if (result != ESP_OK) {
+    Serial.printf("Could not install DAC DMA driver (error %d).\n", result);
+    return;
+  }
+  result = i2s_zero_dma_buffer(I2S_NUM_0);
+  if (result == ESP_OK) result = i2s_set_dac_mode(I2S_DAC_CHANNEL_BOTH_EN);
+  if (result == ESP_OK) {
+    sampleTimerStarted = true;
+    if (xTaskCreatePinnedToCore(dacStreamTask, "dac_stream", 4096, nullptr, 3, nullptr, 1) == pdPASS) {
+      Serial.printf("DAC I2S DMA stream started at %lu frames/s per channel.\n", static_cast<unsigned long>(SAMPLE_RATE_HZ));
+      return;
+    }
+    sampleTimerStarted = false;
+    result = ESP_ERR_NO_MEM;
+  }
+  i2s_stop(I2S_NUM_0);
+  i2s_set_dac_mode(I2S_DAC_CHANNEL_DISABLE);
+  i2s_driver_uninstall(I2S_NUM_0);
+  dacWrite(DAC_PINS[0], 0); dacWrite(DAC_PINS[1], 0);
+  Serial.printf("Could not start DAC stream (error %d).\n", result);
 }
 
 static void scopeSamplerTask(void *) {
@@ -416,6 +490,9 @@ static void handleState() {
   local[0] = channelConfig[0];
   local[1] = channelConfig[1];
   const uint32_t localSampleTicks = sampleTicks;
+  const bool streamRunning = sampleTimerStarted;
+  const uint32_t writeErrors = streamWriteErrors;
+  const uint8_t codes[2] = {lastDacCodes[0], lastDacCodes[1]};
   portEXIT_CRITICAL(&configMux);
 
   const bool wifiConnected = WiFi.status() == WL_CONNECTED;
@@ -425,11 +502,13 @@ static void handleState() {
                 ",\"macAddress\":" + jsonString(WiFi.macAddress()) +
                 ",\"wifiConnected\":" + String(wifiConnected ? "true" : "false") +
                 ",\"wifiSsid\":" + jsonString(wifiConnected ? WiFi.SSID() : String("")) +
-                ",\"timerRunning\":" + String(sampleTimerStarted ? "true" : "false") +
+                ",\"timerRunning\":" + String(streamRunning ? "true" : "false") +
                 ",\"timerTicks\":" + String(localSampleTicks) +
                 ",\"sampleRateHz\":" + String(SAMPLE_RATE_HZ) +
+                ",\"outputDriver\":\"i2s-dma\",\"streamWriteErrors\":" + String(writeErrors) +
+                ",\"maxFrequencyHz\":" + String(MAX_FREQUENCY_HZ, 1) +
                 ",\"pins\":[" + String(DAC_PINS[0]) + "," + String(DAC_PINS[1]) +
-                "],\"dacCodes\":[" + String(lastDacCodes[0]) + "," + String(lastDacCodes[1]) +
+                "],\"dacCodes\":[" + String(codes[0]) + "," + String(codes[1]) +
                 "],\"channels\":[";
   for (uint8_t i = 0; i < 2; ++i) {
     if (i) json += ',';
@@ -477,7 +556,7 @@ static void handleChannelUpdate() {
   if (server.hasArg("frequency")) {
     const float frequency = server.arg("frequency").toFloat();
     if (!isfinite(frequency) || frequency < MIN_FREQUENCY_HZ || frequency > MAX_FREQUENCY_HZ) {
-      server.send(400, "application/json", "{\"error\":\"Frequency must be 0.5 to 10 Hz\"}");
+      server.send(400, "application/json", "{\"error\":\"Frequency must be 0.5 to 20000 Hz\"}");
       return;
     }
     updated.frequencyHz = frequency;
@@ -733,19 +812,7 @@ void setup() {
 
   beginWebServer();
 
-  esp_timer_create_args_t timerArgs = {};
-  timerArgs.callback = &onSampleTimer;
-  timerArgs.name = "wave_sample";
-  timerArgs.dispatch_method = ESP_TIMER_TASK;
-  const esp_err_t createResult = esp_timer_create(&timerArgs, &sampleTimer);
-  if (createResult != ESP_OK) {
-    Serial.printf("Could not create sample timer (error %d).\n", createResult);
-  } else {
-    const esp_err_t startResult = esp_timer_start_periodic(sampleTimer, SAMPLE_PERIOD_US);
-    sampleTimerStarted = startResult == ESP_OK;
-    if (!sampleTimerStarted) Serial.printf("Could not start sample timer (error %d).\n", startResult);
-    else Serial.printf("DAC sample timer started at %lu Hz.\n", static_cast<unsigned long>(SAMPLE_RATE_HZ));
-  }
+  beginDacStream();
 
   const BaseType_t scopeTaskResult = xTaskCreatePinnedToCore(
       scopeSamplerTask, "scope_adc", 4096, nullptr, 2, nullptr, 1);
