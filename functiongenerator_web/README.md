@@ -2,6 +2,8 @@
 
 Browser-controlled waveform generator and input scope for the **classic ESP32 DevKit** (`esp32dev`). Includes two independent DAC outputs, six analog inputs, and 17 selectable PWM capture inputs. Both outputs start disabled after every reboot.
 
+The onboard LED on **GPIO2** pulses continuously at **72 BPM**, including during Wi-Fi setup and when both DAC outputs are disabled. Its brightness follows a PPG-style pulse independently of channel settings and timed faults. This indicator requires a board with an active-high LED connected to GPIO2.
+
 ## Requirements
 
 - Classic ESP32 DevKit and a USB data cable.
@@ -124,4 +126,12 @@ node --test tests/web_regression.cjs
 Entries are selected Git milestones, not numbered releases. Proposed standards remain awaiting approval.
 
 The seven regression tests cover generator controls, preview frequency and animation, stale PWM polling, ordered PWM configuration requests, and splash metadata loading and error recovery. They use a mocked page/API and do not verify browser layout or physical signal accuracy. Use `git log --oneline` for revision history.
+
+To also check LED pulse timing, install a host C++ compiler (`c++`, or set `CXX` to its executable) and run:
+
+```sh
+node --test tests/web_regression.cjs tests/heartbeat_regression.cjs
+```
+
+The heartbeat check verifies 72 pulses per minute, the PWM brightness range, and timing after long uptime. After uploading, confirm the GPIO2 LED pulses during Wi-Fi setup and with both outputs disabled, and that channel controls do not change its rate.
 
